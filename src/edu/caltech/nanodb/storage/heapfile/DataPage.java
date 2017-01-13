@@ -597,7 +597,32 @@ public class DataPage {
                 " slots, but slot " + slot + " was requested for deletion.");
         }
 
-        // TODO:  Complete this implementation.
-        throw new UnsupportedOperationException("TODO:  Implement!");
+        if (getSlotValue(dbPage, slot) == EMPTY_SLOT) {
+          throw new IllegalArgumentException("Slot is already empty.");
+        }
+
+        // Delete tuple
+        deleteTupleDataRange(dbPage, getSlotValue(dbPage, slot), getTupleLength(dbPage, slot));
+
+        logger.debug(String.format("Removed tuple at slot %d", slot));
+
+        // Set to empty slot
+        setSlotValue(dbPage, slot, EMPTY_SLOT);
+
+        logger.debug(String.format("Set tuple at slot %d to empty", slot));
+
+        // Clear stuff at end
+        boolean needsChange = false;
+        int lastSlot = numSlots - 1;
+        while (getSlotValue(dbPage, lastSlot) == EMPTY_SLOT) {
+          needsChange = true;
+          lastSlot -= 1;
+          if (lastSlot == 0) {
+            break;
+          }
+        }
+        if (needsChange) {
+          setNumSlots(dbPage, lastSlot+1);
+        }
     }
 }
