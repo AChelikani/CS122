@@ -1,3 +1,7 @@
 build
 ./datafiles
 ./test_datafiles
+
+# IntelliJ Files
+.idea
+*.iml
