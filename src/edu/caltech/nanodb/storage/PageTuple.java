@@ -511,33 +511,34 @@ public abstract class PageTuple implements Tuple {
         ColumnInfo columnInfo = schema.getColumnInfo(iCol);
 
         // Get length of varchar
-        int unfixedLength = 0;
+        int varcharLength = 0;
         if (columnInfo.getType().getBaseType() == SQLDataType.VARCHAR) {
-          String newValue = TypeConverter.getStringValue(value);
-          unfixedLength = newValue.length();
+          varcharLength = TypeConverter.getStringValue(value).length();
         }
+
+        // Get space taken
+        int space = getStorageSize(columnInfo.getType(), varcharLength);
 
         if (isNullValue(iCol)) {
           setNullFlag(iCol, false);
 
-          int space = getStorageSize(columnInfo.getType(), unfixedLength);
           int offset = getEndOffset();
           for (int i = iCol + 1; i < schema.numColumns(); i ++) {
+            // Get first not null
             if (!getNullFlag(i)) {
               offset = valueOffsets[i];
               break;
             }
           }
-
           insertTupleDataRange(offset, space);
           pageOffset -= space;
-
           computeValueOffsets();
         } else if (columnInfo.getType().getBaseType() == SQLDataType.VARCHAR) {
-          int oldLength = getColumnValueSize(columnInfo.getType(), valueOffsets[iCol]);
-          int space = getStorageSize(columnInfo.getType(), unfixedLength);
+          int offset = valueOffsets[iCol];
+          // Handle if more or less space required
+          int oldLength = getColumnValueSize(columnInfo.getType(), offset);
           if (space - oldLength != 0) {
-            insertTupleDataRange(valueOffsets[iCol], Math.abs(space - oldLength));
+            insertTupleDataRange(offset, Math.abs(space - oldLength));
             pageOffset += Math.abs(space - oldLength);
             computeValueOffsets();
           }
