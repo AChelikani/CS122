@@ -537,11 +537,14 @@ public abstract class PageTuple implements Tuple {
           int offset = valueOffsets[iCol];
           // Handle if more or less space required
           int oldLength = getColumnValueSize(columnInfo.getType(), offset);
-          if (space - oldLength != 0) {
+          if (space - oldLength > 0) {
             insertTupleDataRange(offset, Math.abs(space - oldLength));
-            pageOffset += Math.abs(space - oldLength);
-            computeValueOffsets();
+          } else if (space - oldLength > 0) {
+            deleteTupleDataRange(offset, oldLength - space);
           }
+          // Increases pageOffset if short -> long, dec if long -> short
+          pageOffset -= (space - oldLength)
+          computeValueOffsets();
         }
         writeNonNullValue(dbPage, valueOffsets[iCol], columnInfo.getType(), value);
 
