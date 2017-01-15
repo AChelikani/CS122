@@ -1,0 +1,36 @@
+drop table t;
+create table t (a varchar(20));
+insert into t values ('hello');
+insert into t values ('world');
+update t set a='longerword' where a='world';
+update t set a='supersuperlongword' where a='longerword';
+update t set a='b' where a='supersuperlongword';
+select * from t;
+
+
+
+
+
+drop table t;
+create table t (a varchar(20));
+insert into t values ('first');
+insert into t values ('second');
+insert into t values ('third');
+update t set a=NULL where a='second';
+update t set a='thirdupdated' where a='third';
+update t set a='secondnotnullnow' where a is NULL;
+update t set a='thirdupdatedagain1' where a='thirdupdated';
+update t set a='thirdupdatedagain2' where a='thirdupdatedagain1';
+update t set a='thirdupdatedagain3' where a='thirdupdatedagain2';
+update t set a='thirdupdatedagain4' where a='thirdupdatedagain3';
+update t set a='thirdupdatedagain5' where a='thirdupdatedagain4';
+update t set a='thirdupdatedagain6' where a='thirdupdatedagain5';
+update t set a='thirdupdatedagain7' where a='thirdupdatedagain6';
+update t set a='thirdupdatedagain8' where a='thirdupdatedagain7';
+update t set a='thirdupdatedagain9' where a='thirdupdatedagain8';
+select * from t;
+
+
+
+
+

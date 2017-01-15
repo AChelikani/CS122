@@ -478,17 +478,46 @@ public abstract class PageTuple implements Tuple {
      * @param iCol the index of the column to set to <tt>NULL</tt>
      */
     private void setNullColumnValue(int iCol) {
+        /* TODO:  Implement!
+         *
+         * The column's flag in the tuple's null-bitmap must be set to true.
+         * Also, the data occupied by the column's value must be removed.
+         * There are many helpful methods that can be used for this method:
+         *  - isNullValue() and setNullFlag() to check/change the null-bitmap
+         *  - deleteTupleDataRange() to remove part of a tuple's data
+         *
+         * You will have to examine the column's type as well; you can use
+         * the schema.getColumnInfo(iCol) method to determine the column's
+         * type; schema.getColumnInfo(iCol).getType() to get the basic SQL
+         * data type.  If the column is a variable-size column (e.g. VARCHAR)
+         * then you may need to retrieve details from the column itself using
+         * the dbPage member, and the getStorageSize() field.
+         *
+         * Finally, the valueOffsets array is extremely important, because it
+         * contains the starting offset of every non-NULL column's data in the
+         * tuple.  Setting a column's value to NULL will obviously affect at
+         * least some of the value-offsets.  Make sure to update this array
+         * properly as well.  (Note that columns whose value is NULL will have
+         * the special NULL_OFFSET constant as their offset in the tuple.)
+         */
+
         if (!isNullValue(iCol)) {
-          // Set flag
-          setNullFlag(iCol, true);
-          ColumnInfo columnInfo = schema.getColumnInfo(iCol);
-          // Find offset
-          int offset = valueOffsets[iCol];
-          // Delete range given offset and length
-          deleteTupleDataRange(offset, getColumnValueSize(columnInfo.getType(), offset));
-          // Update page offset by length
-          pageOffset += getColumnValueSize(columnInfo.getType(), offset);
-          computeValueOffsets();
+            // Set flag
+            setNullFlag(iCol, true);
+            ColumnInfo columnInfo = schema.getColumnInfo(iCol);
+
+            // Find offset
+            int offset = valueOffsets[iCol];
+
+            // Delete range given offset and length
+            int valueSize = getColumnValueSize(columnInfo.getType(), offset);
+            deleteTupleDataRange(offset, valueSize);
+
+            // Update page offset by length
+            pageOffset += valueSize;
+
+            // Update valueOffsets.
+            computeValueOffsets();
         }
     }
 
@@ -508,46 +537,92 @@ public abstract class PageTuple implements Tuple {
         if (value == null)
             throw new IllegalArgumentException("value cannot be null");
 
-        ColumnInfo columnInfo = schema.getColumnInfo(iCol);
+        /* TODO:  Implement!
+         *
+         * This time, the column's flag in the tuple's null-bitmap must be set
+         * to false (if it was true before).
+         *
+         * The trick is to figure out the size of the old column-value, and
+         * the size of the new column-value, so that the right amount of space
+         * can be made available for the new value.  If the column is a fixed-
+         * size type (e.g. an INTEGER) then this is easy, but if the column is
+         * a variable-size type (e.g. VARCHAR) then this will be more
+         * involved.  As before, retrieving the column's type will be important
+         * in implementing the method:  schema.getColumnInfo(iCol), and then
+         * schema.getColumnInfo(iCol).getType() to get the basic type info.
+         * You can use the getColumnValueSize() method to determine the size
+         * of a value as well.
+         *
+         * As before, the valueOffsets array is extremely important to use and
+         * modify correctly, so take care in how you manage it.
+         *
+         * The tuple's data in the page starts at the offset returned by the
+         * getDataStartOffset() method; this is the offset past the tuple's
+         * null-bitmask.
+         *
+         * Finally, once you have made space for the new column value, you can
+         * write the value itself using the writeNonNullValue() method.
+         */
 
-        // Get length of varchar
-        int varcharLength = 0;
-        if (columnInfo.getType().getBaseType() == SQLDataType.VARCHAR) {
-          varcharLength = TypeConverter.getStringValue(value).length();
-        }
+        // Get the data type for this column (CHAR, VARCHAR, INT, etc.)
+        ColumnType dataType = schema.getColumnInfo(iCol).getType();
 
-        // Get space taken
-        int space = getStorageSize(columnInfo.getType(), varcharLength);
+        // If the column is variable length (VARCHAR), then adjust space.
+        if (dataType.getBaseType() == SQLDataType.VARCHAR) {
 
-        if (isNullValue(iCol)) {
-          setNullFlag(iCol, false);
+            // Get space needed for new value.
+            int varcharLength = TypeConverter.getStringValue(value).length();
+            int newSize = getStorageSize(dataType, varcharLength);
 
-          int offset = getEndOffset();
-          for (int i = iCol + 1; i < schema.numColumns(); i ++) {
-            // Get first not null
-            if (!getNullFlag(i)) {
-              offset = valueOffsets[i];
-              break;
+            // Column is previously null, so insert new space.
+            if (isNullValue(iCol)) {
+                setNullFlag(iCol, false);
+
+                // Find the offset amount in which to insert the value.
+                int offset = getEndOffset();
+
+                // Iterate over subsequent columns to get appropriate offset.
+                for (int i = iCol + 1; i < schema.numColumns(); i++) {
+                    if (!getNullFlag(i)) {
+                        offset = valueOffsets[i];
+                        break;
+                    }
+                }
+
+                // Create space for the new value. Update page offset.
+                insertTupleDataRange(offset, newSize);
+                pageOffset -= newSize;
+
+                // Update valueOffsets.
+                computeValueOffsets();
             }
-          }
-          insertTupleDataRange(offset, space);
-          pageOffset -= space;
-          computeValueOffsets();
-        } else if (columnInfo.getType().getBaseType() == SQLDataType.VARCHAR) {
-          int offset = valueOffsets[iCol];
-          // Handle if more or less space required
-          int oldLength = getColumnValueSize(columnInfo.getType(), offset);
-          if (space - oldLength > 0) {
-            insertTupleDataRange(offset, space - oldLength);
-          } else if (space - oldLength > 0) {
-            deleteTupleDataRange(offset, oldLength - space);
-          }
-          // Increases pageOffset if short -> long, dec if long -> short
-          pageOffset -= (space - oldLength)
-          computeValueOffsets();
-        }
-        writeNonNullValue(dbPage, valueOffsets[iCol], columnInfo.getType(), value);
 
+            // Column has a previous value. Update the space used accordingly.
+            else {
+                int offset = valueOffsets[iCol];
+                int oldSize = getColumnValueSize(dataType, offset);
+
+                // Increase space if new value is larger than old value.
+                if (newSize - oldSize > 0) {
+                    insertTupleDataRange(offset, newSize - oldSize);
+                }
+
+                // Reclaim unused space if new value is smaller than old value.
+                else if (oldSize - newSize > 0) {
+                    deleteTupleDataRange(offset, oldSize - newSize);
+                }
+
+                // Adjust pageOffset by the column size changes.
+                // If oldSize == newSize, pageOffset will not be changed.
+                pageOffset -= (newSize - oldSize);
+
+                // Update valueOffsets.
+                computeValueOffsets();
+            }
+        }
+
+        // With space possibly adjusted, now just write the value.
+        writeNonNullValue(dbPage, valueOffsets[iCol], dataType, value);
     }
 
 

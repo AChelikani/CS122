@@ -597,6 +597,8 @@ public class DataPage {
                 " slots, but slot " + slot + " was requested for deletion.");
         }
 
+        // TODO:  Complete this implementation.
+
         if (getSlotValue(dbPage, slot) == EMPTY_SLOT) {
           throw new IllegalArgumentException("Slot is already empty.");
         }
@@ -615,14 +617,14 @@ public class DataPage {
         boolean needsChange = false;
         int lastSlot = numSlots - 1;
         while (getSlotValue(dbPage, lastSlot) == EMPTY_SLOT) {
-          needsChange = true;
-          lastSlot -= 1;
-          if (lastSlot == 0) {
-            break;
-          }
+            needsChange = true;
+            lastSlot -= 1;
+            if (lastSlot == 0) {
+                break;
+            }
         }
         if (needsChange) {
-          setNumSlots(dbPage, lastSlot+1);
+            setNumSlots(dbPage, lastSlot+1);
         }
     }
 }
