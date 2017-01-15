@@ -538,7 +538,7 @@ public abstract class PageTuple implements Tuple {
           // Handle if more or less space required
           int oldLength = getColumnValueSize(columnInfo.getType(), offset);
           if (space - oldLength > 0) {
-            insertTupleDataRange(offset, Math.abs(space - oldLength));
+            insertTupleDataRange(offset, space - oldLength);
           } else if (space - oldLength > 0) {
             deleteTupleDataRange(offset, oldLength - space);
           }
