@@ -377,9 +377,6 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
         DataPage.sanityCheck(dbPage);
 
-        // Unpin the tuple since it is no longer needed.
-        pageTup.unpin();
-
         return pageTup;
     }
 
