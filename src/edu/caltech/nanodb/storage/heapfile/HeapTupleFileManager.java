@@ -39,8 +39,8 @@ public class HeapTupleFileManager implements TupleFileManager {
 
     @Override
     public TupleFile createTupleFile(DBFile dbFile, TableSchema schema)
-        throws IOException {
 
+    throws IOException {
         logger.info(String.format(
             "Initializing new heap tuple file %s with %d columns",
             dbFile, schema.numColumns()));
@@ -72,6 +72,9 @@ public class HeapTupleFileManager implements TupleFileManager {
         // Read in the statistics.
         StatsWriter statsWriter = new StatsWriter();
         TableStats stats = statsWriter.readTableStats(hpReader, schema);
+
+        // Unpin the header page
+        headerPage.unpin();
 
         return new HeapTupleFile(storageManager, this, dbFile, schema, stats);
     }
@@ -118,6 +121,9 @@ public class HeapTupleFileManager implements TupleFileManager {
         statsWriter.writeTableStats(schema, stats, hpWriter);
         int statsSize = hpWriter.getPosition() - schemaEndPos;
         HeaderPage.setStatsSize(headerPage, statsSize);
+
+        // Unpin the header page.
+        headerPage.unpin();
     }
 
 

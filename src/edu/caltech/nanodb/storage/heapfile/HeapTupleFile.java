@@ -138,8 +138,12 @@ page_scan:  // So we can break out of the outer loop from inside the inner one
                     // This is the first tuple in the file.  Build up the
                     // HeapFilePageTuple object and return it.
                     first = new HeapFilePageTuple(schema, dbPage, iSlot, offset);
+                    // Unpin current page, since loading the tuple pinned it again.
+                    dbPage.unpin();
                     break page_scan;
                 }
+                // Unpin current page since we are done using it.
+                dbPage.unpin();
             }
         }
         catch (EOFException e) {
@@ -195,6 +199,10 @@ page_scan:  // So we can break out of the outer loop from inside the inner one
                 " on page " + fptr.getPageNo() + " is empty.");
         }
 
+        // Unpin current page, since loading the tuple will pin
+        // it again.
+        dbPage.unpin();
+
         return new HeapFilePageTuple(schema, dbPage, slot, offset);
     }
 
@@ -224,6 +232,10 @@ page_scan:  // So we can break out of the outer loop from inside the inner one
         DBPage dbPage = ptup.getDBPage();
         DBFile dbFile = dbPage.getDBFile();
 
+        // Pin the current page, as it will be unpinned before a tuple
+        // is loaded or moving to the next page.
+        dbPage.pin();
+
         HeapFilePageTuple nextTup = null;
 
         int nextSlot = ptup.getSlot() + 1;
@@ -238,6 +250,8 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
                     // Pins the page a second time.
                     nextTup = new HeapFilePageTuple(schema, dbPage, nextSlot,
                                                     nextOffset);
+                    // Unpin current page, since loading the tuple pinned it again.
+                    dbPage.unpin();
                     break page_scan;
                 }
 
@@ -249,6 +263,8 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             // tuple in that page.
 
             try {
+                dbPage.unpin(); // Unpin the current page.
+                // Loading the next page also pins it.
                 dbPage = storageManager.loadDBPage(dbFile, dbPage.getPageNo() + 1);
                 nextSlot = 0;
             }
@@ -333,6 +349,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
             // If we reached this point then the page doesn't have enough
             // space, so go on to the next data page.
+            dbPage.unpin(); // Unpin current page;
             dbPage = null;  // So the next section will work properly.
             pageNo++;
         }
@@ -352,10 +369,16 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         logger.debug(String.format(
             "New tuple will reside on page %d, slot %d.", pageNo, slot));
 
+        // Unpin the page, since storing the tuple will pin it again.
+        dbPage.unpin();
+
         HeapFilePageTuple pageTup =
             HeapFilePageTuple.storeNewTuple(schema, dbPage, slot, tupOffset, tup);
 
         DataPage.sanityCheck(dbPage);
+
+        // Unpin the tuple since it is no longer needed.
+        pageTup.unpin();
 
         return pageTup;
     }
