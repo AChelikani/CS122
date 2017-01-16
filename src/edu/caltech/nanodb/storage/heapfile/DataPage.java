@@ -604,7 +604,8 @@ public class DataPage {
         }
 
         // Delete tuple
-        deleteTupleDataRange(dbPage, getSlotValue(dbPage, slot), getTupleLength(dbPage, slot));
+        int slotValue = getSlotValue(dbPage, slot);
+        deleteTupleDataRange(dbPage, slotValue, getTupleLength(dbPage, slot));
 
         logger.debug(String.format("Removed tuple at slot %d", slot));
 
@@ -613,16 +614,15 @@ public class DataPage {
 
         logger.debug(String.format("Set tuple at slot %d to empty", slot));
 
-        // Clear stuff at end
+        // Clear empty slots at end
         boolean needsChange = false;
         int lastSlot = numSlots - 1;
-        while (getSlotValue(dbPage, lastSlot) == EMPTY_SLOT) {
+
+        while (getSlotValue(dbPage, lastSlot) == EMPTY_SLOT && lastSlot > 0) {
             needsChange = true;
             lastSlot -= 1;
-            if (lastSlot == 0) {
-                break;
-            }
         }
+
         if (needsChange) {
             setNumSlots(dbPage, lastSlot+1);
         }
