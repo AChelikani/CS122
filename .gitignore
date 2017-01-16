@@ -6,3 +6,6 @@ build
 # IntelliJ Files
 .idea
 *.iml
+
+# Mac files
+.DS_Store
