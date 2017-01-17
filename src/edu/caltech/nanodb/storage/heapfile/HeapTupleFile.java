@@ -413,7 +413,6 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         // unpin the newly added tuple.
         headerPage.unpin();
         nextPage.unpin();
-        pageTup.unpin();
 
         return pageTup;
     }

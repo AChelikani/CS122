@@ -217,6 +217,9 @@ public class InsertCommand extends QueryCommand {
             eventDispatcher.fireBeforeRowInserted(tableInfo, tuple);
             Tuple newTuple = tupleFile.addTuple(tuple);
             eventDispatcher.fireAfterRowInserted(tableInfo, newTuple);
+
+            // Unpin the tuple since it is no longer needed.
+            newTuple.unpin();
         }
         catch (IOException e) {
             throw new ExecutionException("Couldn't insert row into table.", e);
