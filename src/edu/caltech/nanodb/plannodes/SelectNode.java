@@ -89,16 +89,17 @@ public abstract class SelectNode extends PlanNode {
         if (done)
             return null;
 
-        // Pin current tuple since it will be unpinned in the while loop.
-        if (currentTuple != null) {
-            currentTuple.pin();
-        }
+        // This boolean is true if advanceCurrentTuple has not been called yet
+        // to change currentTuple.
+        boolean isFirstTuple = true;
 
         // Continue to advance the current tuple until it is selected by the
         // predicate.
         do {
-            // Unpin unsatisfying tuple.
-            if (currentTuple != null) {
+            if (isFirstTuple) {
+                isFirstTuple = false;
+            }
+            else {
                 currentTuple.unpin();
             }
 
