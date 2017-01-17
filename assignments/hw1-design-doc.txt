@@ -9,7 +9,7 @@ A1.  List your team name and the people who worked on this assignment.
      Make Databases Great Again
 
      Advith Chelikani
-     Joonhee Lee
+     Joon Lee
      Charlie Tong
 
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
@@ -28,7 +28,7 @@ A3.  Specify any late tokens you are applying to this assignment, or
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
      Advith: Set-up, deleting tuples, updating tuples
-     Joonhee:
+     Joon: Buffer management
      Charlie:
 
 B:  Deleting and Updating Tuples
@@ -68,12 +68,31 @@ C:  Unpinning Tuples and Pages
 C1.  Briefly describe your strategy for determining when tuples need to
      be unpinned.  Make sure to comment on plan-nodes and commands.
 
+     Our strategy was to unpin tuples when they were no longer being used
+     by the database, i.e. when the tuple objects were no longer referenced
+     by the program during the command. Thus, tuples were unpinned after
+     the plan-nodes executed commands on them. Also, the select plan-node
+     unpinned tuples when they did not satisfy the selection predicate.
+
 C2.  In general, you only need to worry about unpinning tuples because
      the backing page will also be unpinned.  However, there are some
      situations when DBPages themselves must be unpinned directly.
      Describe any situations where you unpin pages directly in your
      implementation, and why you do so.  (Make sure to answer this
      question in the context of your insert-optimization changes.)
+
+     In HeapTupleFile methods, many methods iterate over multiple pages in the
+     file to perform an action. In this case, a page needs to be unpinned directly
+     if it is no longer needed. For example, in addTuple(), we traverse over the
+     linked list of free pages, and if a page is loaded but not needed, it must
+     be unpinned afterwards. Similarly, in deleteTuple(), we unpin each page after
+     it is used. Pages are unpinned directly because they are referenced without
+     referencing tuples.
+
+     In HeapTupleFileManager, we also unpin pages directly. In openTupleFile(), we
+     unpin the page because creating the tuple object will pin it again. In
+     saveMetadata(), we also unpin pages directly because we do not reference tuples
+     in the method.
 
 D:  NanoDB Storage Performance
 ------------------------------
