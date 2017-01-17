@@ -10,8 +10,6 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
-import edu.caltech.nanodb.queryeval.ColumnStats;
-import edu.caltech.nanodb.queryeval.ColumnStatsCollector;
 import edu.caltech.nanodb.queryeval.TableStats;
 import edu.caltech.nanodb.relations.TableSchema;
 import edu.caltech.nanodb.relations.Tuple;
@@ -283,6 +281,39 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
      * Adds the specified tuple into the table file.  A new
      * <tt>HeapFilePageTuple</tt> object corresponding to the tuple is returned.
      *
+     * @design (tongcharlie) A linked-list is used to keep track of pages with
+     *         free space, ordered in ascending order by index. This kills the
+     *         O(N^2) traversal time of the default implementation, and also
+     *         greatly reduces the number of pages read during an insert.
+     *
+     *         Specifically, the header page (index = 0) and all data pages
+     *         (index >= 1) have a "NextFreeBlock" field, which is simply an
+     *         integer storing the index of the next node in the linked list. A
+     *         value of 0 means the end of the list. Nodes that are not in the
+     *         list also store a value of 0.
+     *
+     *         The interfaces for fetching this value are slightly different for
+     *         the two pages:
+     *         For the header page, use
+     *         {@link HeaderPage#getNextFreeBlock(DBPage)} and
+     *         {@link HeaderPage#setNextFreeBlock(DBPage, int)}.
+     *         For data pages, use
+     *         {@link DataPage.MetaData#getNextFreeBlock(DBPage)}} and
+     *         {@link DataPage.MetaData#setNextFreeBlock(DBPage, int)}.
+     *
+     *         When a page is determined to not have enough space for new
+     *         tuples, it is removed from the linked list. The criteria for
+     *         removal is simply not having enough space to add the current
+     *         tuple. This is not necessarily optimal -- there could be
+     *         smaller tuples that may possibly fit -- but it is simple, has
+     *         superior performance, and still keeps a reasonable file size.
+     *
+     *         If there are no suitable pages available, a new page is created
+     *         and added to the linked list.
+     *
+     *         When tuples are deleted from a page, the page is readded to the
+     *         linked list, since it should now have space for more tuples.
+     *
      * @review (donnie) This could be made a little more space-efficient.
      *         Right now when computing the required space, we assume that we
      *         will <em>always</em> need a new slot entry, whereas the page may
@@ -317,67 +348,71 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
                 " is larger than page size " + dbFile.getPageSize() + ".");
         }
 
-        // Search for a page to put the tuple in.  If we hit the end of the
-        // data file, create a new page.
-        int pageNo = 1;
-        DBPage dbPage = null;
-        while (true) {
-            // Try to load the page without creating a new one.
-            try {
-                dbPage = storageManager.loadDBPage(dbFile, pageNo);
-            }
-            catch (EOFException eofe) {
-                // Couldn't load the current page, because it doesn't exist.
-                // Break out of the loop.
-                logger.debug("Reached end of data file without finding " +
-                             "space for new tuple.");
-                break;
-            }
+        // Get the header page.
+        DBPage headerPage = storageManager.loadDBPage(dbFile, 0);
 
-            int freeSpace = DataPage.getFreeSpaceInPage(dbPage);
+        // Get the next page with free space.
+        int nextPageIndex = HeaderPage.getNextFreeBlock(headerPage);
+        DBPage nextPage = null;
+
+        // Evict pages out of the linked-list until one has enough space.
+        while (nextPageIndex != 0) {
+            nextPage = storageManager.loadDBPage(dbFile, nextPageIndex);
+
+            int freeSpace = DataPage.getFreeSpaceInPage(nextPage);
 
             logger.trace(String.format("Page %d has %d bytes of free space.",
-                         pageNo, freeSpace));
+                    nextPageIndex, freeSpace));
 
             // If this page has enough free space to add a new tuple, break
             // out of the loop.  (The "+ 2" is for the new slot entry we will
             // also need.)
             if (freeSpace >= tupSize + 2) {
-                logger.debug("Found space for new tuple in page " + pageNo + ".");
+                logger.debug(
+                    "Found space for new tuple in page " + nextPageIndex + ".");
                 break;
             }
 
             // If we reached this point then the page doesn't have enough
-            // space, so go on to the next data page.
-            dbPage.unpin(); // Unpin current page;
-            dbPage = null;  // So the next section will work properly.
-            pageNo++;
+            // space, so remove the page from the linked list and continue.
+            logger.debug("Removed page " + nextPageIndex + " from linked-list");
+            nextPageIndex = DataPage.MetaData.getNextFreeBlock(nextPage);
+            DataPage.MetaData.setNextFreeBlock(nextPage, 0);
+            HeaderPage.setNextFreeBlock(headerPage, nextPageIndex);
+
+            nextPage.unpin(); // unpin the evicted page (no longer needed).
         }
 
-        if (dbPage == null) {
-            // Try to create a new page at the end of the file.  In this
-            // circumstance, pageNo is *just past* the last page in the data
-            // file.
-            logger.debug("Creating new page " + pageNo + " to store new tuple.");
-            dbPage = storageManager.loadDBPage(dbFile, pageNo, true);
-            DataPage.initNewPage(dbPage);
+        // No more free pages, create new page.
+        if (nextPageIndex == 0) {
+            // Try to create a new page at the end of the file.
+            nextPageIndex = dbFile.getNumPages();
+            logger.debug(
+                "Creating new page " + nextPageIndex + " to store new tuple.");
+            nextPage = storageManager.loadDBPage(dbFile, nextPageIndex, true);
+            DataPage.initNewPage(nextPage);
+
+            // Add this page to the linked list.
+            HeaderPage.setNextFreeBlock(headerPage, nextPageIndex);
         }
 
-        int slot = DataPage.allocNewTuple(dbPage, tupSize);
-        int tupOffset = DataPage.getSlotValue(dbPage, slot);
+        // Insert the tuple into the page.
+        int slot = DataPage.allocNewTuple(nextPage, tupSize);
+        int tupOffset = DataPage.getSlotValue(nextPage, slot);
 
         logger.debug(String.format(
-            "New tuple will reside on page %d, slot %d.", pageNo, slot));
-
-        // Unpin the page, since storing the tuple will pin it again.
-        dbPage.unpin();
+            "New tuple will reside on page %d, slot %d.", nextPageIndex, slot));
 
         HeapFilePageTuple pageTup =
-            HeapFilePageTuple.storeNewTuple(schema, dbPage, slot, tupOffset, tup);
+            HeapFilePageTuple.storeNewTuple(schema, nextPage, slot, tupOffset, tup);
 
-        DataPage.sanityCheck(dbPage);
+        DataPage.sanityCheck(nextPage);
 
-        // Unpin the tuple since it is no longer needed.
+        // At this point, only 2 pages are still pinned: the header page and
+        // the page we inserted the tuple into. We unpin both pages and also
+        // unpin the newly added tuple.
+        headerPage.unpin();
+        nextPage.unpin();
         pageTup.unpin();
 
         return pageTup;
@@ -431,6 +466,38 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
         // Note that we don't invalidate the page-tuple when it is deleted,
         // so that the tuple can still be unpinned, etc.
+
+        // Since a tuple was deleted, we assume this page has space for new
+        // tuples now. Add this page back to the linked-list.
+        int thisPageIndex = dbPage.getPageNo();
+
+        // Set up for linked list traversal, starting with the header page.
+        DBPage currPage = storageManager.loadDBPage(dbFile, 0);
+        int nextPageIndex = HeaderPage.getNextFreeBlock(currPage);
+
+        // Advance the linked-list until hitting the end, or this page's index.
+        while (nextPageIndex != 0 && nextPageIndex < thisPageIndex) {
+            currPage.unpin();   // Unpin current page before advancing.
+
+            currPage = storageManager.loadDBPage(dbFile, nextPageIndex);
+            nextPageIndex = DataPage.MetaData.getNextFreeBlock(currPage);
+        }
+
+        // Make sure the next page IS NOT this page, and insert.
+        if (nextPageIndex != thisPageIndex) {
+            logger.debug(String.format("Inserted page %d between %d and %d.",
+                    thisPageIndex, currPage.getPageNo(), nextPageIndex));
+
+            // If the current page is the header page, use a different call.
+            if (currPage.getPageNo() == 0)
+                HeaderPage.setNextFreeBlock(currPage, thisPageIndex);
+            else
+                DataPage.MetaData.setNextFreeBlock(currPage, thisPageIndex);
+
+            DataPage.MetaData.setNextFreeBlock(dbPage, nextPageIndex);
+        }
+
+        currPage.unpin();   // Unpin pages.
     }
 
 
