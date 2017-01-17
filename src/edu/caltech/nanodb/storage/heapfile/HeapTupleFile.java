@@ -260,9 +260,10 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             // tuples.  Go on to the next data-page, and start with the first
             // tuple in that page.
 
+            dbPage.unpin(); // Unpin the current page.
+
             try {
-                dbPage.unpin(); // Unpin the current page.
-                // Loading the next page also pins it.
+                // Loading the next page pins it.
                 dbPage = storageManager.loadDBPage(dbFile, dbPage.getPageNo() + 1);
                 nextSlot = 0;
             }
