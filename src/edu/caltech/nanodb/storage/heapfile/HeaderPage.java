@@ -63,10 +63,22 @@ public class HeaderPage {
 
 
     /**
+     * The offset in the header page where the next free block index is. The
+     * next free block is the next page which has space for new tuples. Each
+     * subsequent {@link DataPage} will also have an index stored. This creates
+     * a linked list of pages with free slots, sorted in ascending order. An
+     * index of 0 means the end of the list.
+     *
+     * This value is an integer.
+     */
+    public static final int OFFSET_NEXT_FREE_BLOCK = 6;
+
+
+    /**
      * The offset in the header page where the table schema starts.  This
      * value is an unsigned short.
      */
-    public static final int OFFSET_SCHEMA_START = 6;
+    public static final int OFFSET_SCHEMA_START = 10;
 
 
     /**
@@ -152,6 +164,35 @@ public class HeaderPage {
         }
 
         dbPage.writeShort(OFFSET_STATS_SIZE, numBytes);
+    }
+
+
+    /**
+     * The next free block is an integer for the index of the page with
+     * space available. This value is determined by {@link HeapTupleFile}
+     * and set by calling {@link #setNextFreeBlock(DBPage, int)}.
+     *
+     * The default value is 0.
+     *
+     * @param dbPage the data page to get the next free block for
+     * @return next free block
+     */
+    public static int getNextFreeBlock(DBPage dbPage) {
+        verifyIsHeaderPage(dbPage);
+        return dbPage.readInt(OFFSET_NEXT_FREE_BLOCK);
+    }
+
+
+    /**
+     * Set the next free block value. See {@link #getNextFreeBlock(DBPage)}}
+     * for information on the meaning of the value.
+     *
+     * @param dbPage the data page to set the next free block for
+     * @param nextFreeBlock value to set
+     */
+    public static void setNextFreeBlock(DBPage dbPage, int nextFreeBlock) {
+        verifyIsHeaderPage(dbPage);
+        dbPage.writeInt(OFFSET_NEXT_FREE_BLOCK, nextFreeBlock);
     }
 
 

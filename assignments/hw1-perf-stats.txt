@@ -1,0 +1,58 @@
+LOGGING level WARN
+
+
+####  50k insert [on SSD]
+
+# before linked-list
+storage.pagesRead = 20657078
+storage.pagesWritten = 50002
+storage.fileChanges = 1
+storage.fileDistanceTraveled = 659386864
+
+real  2m55.181s
+user  2m25.564s
+sys   0m34.524s
+
+
+# after linked-list
+storage.pagesRead = 100833
+storage.pagesWritten = 51665
+storage.fileChanges = 1
+storage.fileDistanceTraveled = 677734592
+
+real  0m3.223s
+user  0m5.620s
+sys   0m0.452s
+
+
+
+
+
+
+####  50k insert + del [on SSD]
+
+# before linked-list
+storage.pagesRead = 13675702
+storage.pagesWritten = 61683
+storage.fileChanges = 1
+storage.fileDistanceTraveled = 438519056
+
+real  1m58.459s
+user  1m41.456s
+sys   0m21.800s
+
+size  5013504
+
+
+# after linked-list
+storage.pagesRead = 200740
+storage.pagesWritten = 83450
+storage.fileChanges = 1
+storage.fileDistanceTraveled = 524894816
+
+real  0m7.423s
+user  0m10.532s
+sys   0m0.888s
+
+size  5062656
+

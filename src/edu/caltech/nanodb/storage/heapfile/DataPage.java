@@ -41,6 +41,67 @@ public class DataPage {
      */
     public static final int EMPTY_SLOT = 0;
 
+    /**
+     * Nested class that holds all metadata related methods. Metadata is stored
+     * at the very end of the page. This memory chunk (amount given by
+     * {@link #getMetaDataOffSet()} is reserved for every DataPage.
+     *
+     * When adding new metadata fields, include a getter and setter, and modify
+     * {@link #getMetaDataOffSet()} to reflect the total number of bytes used.
+     *
+     * Currently, the following values are stored (in reverse order):
+     *   end - (0, 4]    NextFreeBlock      int     4 bytes
+     *       - (4, 8]    ...
+     */
+    public static class MetaData {
+
+        /**
+         * Initialize metadata for DataPage.
+         *
+         * @param dbPage the data page to initialize
+         */
+        public static void initNewPageMetaData(DBPage dbPage) {
+            setNextFreeBlock(dbPage, 0);
+        }
+
+        /**
+         * Get the number of bytes reserved for metadata at the end of the page.
+         *
+         * @return number of bytes used by metadata
+         */
+        public static int getMetaDataOffSet() {
+            return 4;
+        }
+
+        /**
+         * The next free block is an integer for the index of the page with
+         * space available. This value is determined by {@link HeapTupleFile}
+         * and set by calling {@link #setNextFreeBlock(DBPage, int)}.
+         *
+         * The default value is 0.
+         *
+         * @param dbPage the data page to get the next free block for
+         * @return next free block
+         */
+        public static int getNextFreeBlock(DBPage dbPage) {
+            // The value is stored in the last 4 bytes of the page.
+            return dbPage.readInt(dbPage.getPageSize() - 4);
+        }
+
+
+        /**
+         * Set the next free block value. See {@link #getNextFreeBlock(DBPage)}}
+         * for information on the meaning of the value.
+         *
+         * @param dbPage the data page to set the next free block for
+         * @param nextFreeBlock value to set
+         */
+        public static void setNextFreeBlock(DBPage dbPage, int nextFreeBlock) {
+            // The value is stored in the last 4 bytes of the page.
+            dbPage.writeInt(dbPage.getPageSize() - 4, nextFreeBlock);
+        }
+
+    }
 
     /**
      * Initialize a newly allocated data page.  Currently this involves setting
@@ -51,6 +112,7 @@ public class DataPage {
      */
     public static void initNewPage(DBPage dbPage) {
         setNumSlots(dbPage, 0);
+        MetaData.initNewPageMetaData(dbPage);
     }
 
 
@@ -212,15 +274,15 @@ public class DataPage {
     /**
      * This static helper function returns the index of where tuple data
      * currently ends in the specified data page.  This value depends more on
-     * the overall structure of the data page, and at present is simply the
-     * page-size.
+     * the overall structure of the data page, and at present is the page-size
+     * minus the bytes reserved for metadata ({@link MetaData}).
      *
      * @param dbPage the data page to examine
      *
      * @return the index where the tuple data ends in this data page
      */
     public static int getTupleDataEnd(DBPage dbPage) {
-        return dbPage.getPageSize();
+        return dbPage.getPageSize() - MetaData.getMetaDataOffSet();
     }
 
 
