@@ -1,4 +1,4 @@
-drop table t;
+drop table if exists t;
 create table t (a varchar(20));
 insert into t values ('hello');
 insert into t values ('world');
@@ -11,7 +11,7 @@ select * from t;
 
 
 
-drop table t;
+drop table if exists t;
 create table t (a varchar(20));
 insert into t values ('first');
 insert into t values ('second');
@@ -33,4 +33,10 @@ select * from t;
 
 
 
+
+drop table if exists t;
+create table t (a varchar(20));
+insert into t values ('hi');
+delete from t where a='hi';
+select * from t;
 

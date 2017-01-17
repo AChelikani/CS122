@@ -101,17 +101,59 @@ D1.  In 3-6 sentences, describe your general approach for improving the
      performance of inserts, including what general file-level structuring
      you use of blocks.
 
+     We store "free" blocks in a linked-list format anchored at the header file.
+     Each block in the list contains an index to the next block in the list.
+     This value is stored as an integer in the last 4 bytes of the page for
+     DataPages, and is stored in bytes 6-10 for the HeaderPage. This reduces
+     the number of pages read for each insert down to constant time on average.
+
 D2.  Does your file-level organization have the potential to increase the
      number of large disk seeks when performing inserts?  What steps do
      you take, if any, to reduce the number of disk seeks?
 
+     No, the changes should always decrease the number of disk seeks compared
+     to the default implementation. Each insert should take on average 2 page
+     reads: the header and the next free page.
+
+     The only time it will take more than 2 is when the next free page does not
+     have enough space for the new tuple. Then, the page is removed from the
+     linked-list, which occurs once per page and does not scale with the number
+     of inserted tuples (hence not included in the average page reads). This
+     greatly reduces the number of disk reads, although distance travelled
+     will be approximately the same.
+
 D3.  What steps must be taken during a tuple-delete operation to update
      your file-level structures?  How many pages must be written to?
+
+     The page is considered "free" and thus inserted into the linked-list if it
+     is not already present. This requires 2 page writes (the newly freed page
+     and also the page that comes before it in the linked-list). Traversing
+     the linked-list is O(N) reads in the worst case.
 
 D4.  What steps must be taken after a tuple-insert operation that fills
      the data page?
 
+     The page is marked as "full" and removed from the linked-list. This
+     consists of two page writes (the full page is marked as full and removed,
+     and the page before it in the linked-list now points to the next node).
+
+     In our implementation, these steps occur at the next insert
+     operation, rather than after the insert that fills the page.
+
 D5.  Describe your criteria for when a page is considered to be "full."
+
+     The only time pages are marked "full" is during an insert operation with
+     a tuple that does not fit, rather than after an insert that fills the page.
+
+     We chose this implementation because it is simpler. We do not need to set 
+     arbitrary or inefficient limits for the criteria of "full" pages. For
+     example, if we choose the maximum size of new tuples as the limit, a lot of
+     space can be wasted. Any other limit would not guarantee that the next
+     tuple could be inserted anyway, so we may as well delay the decision until
+     the next insert actually happens.
+
+     Performance wise, there is potentially one additional read/write per page,
+     but since this doesn't scale with the number of tuples we don't care.
 
 E:  Feedback [OPTIONAL]
 -----------------------
