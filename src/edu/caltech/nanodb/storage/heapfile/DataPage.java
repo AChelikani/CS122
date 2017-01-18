@@ -50,8 +50,9 @@ public class DataPage {
      * {@link #getMetaDataOffSet()} to reflect the total number of bytes used.
      *
      * Currently, the following values are stored (in reverse order):
-     *   end - (0, 4]    NextFreeBlock      int     4 bytes
-     *       - (4, 8]    ...
+     *   end - (0, 4]       NextFreeBlock       int         4 bytes
+     *       - (4, 5]       isInLinkedList      boolean     1 byte
+     *       - (5, ...]     ...
      */
     public static class MetaData {
 
@@ -62,6 +63,7 @@ public class DataPage {
          */
         public static void initNewPageMetaData(DBPage dbPage) {
             setNextFreeBlock(dbPage, 0);
+            setIsInLinkedList(dbPage, false);
         }
 
         /**
@@ -70,7 +72,7 @@ public class DataPage {
          * @return number of bytes used by metadata
          */
         public static int getMetaDataOffSet() {
-            return 4;
+            return 5;
         }
 
         /**
@@ -99,6 +101,35 @@ public class DataPage {
         public static void setNextFreeBlock(DBPage dbPage, int nextFreeBlock) {
             // The value is stored in the last 4 bytes of the page.
             dbPage.writeInt(dbPage.getPageSize() - 4, nextFreeBlock);
+        }
+
+
+        /**
+         * A boolean flag for marking whether this block is currently contained
+         * in the linked-list of free blocks or not.
+         *
+         * The default value is false.
+         *
+         * @param dbPage the data page to get the boolean flag for
+         * @return boolean flag
+         */
+        public static boolean isInLinkedList(DBPage dbPage) {
+            // The value is stored in the 5th to last byte of the page
+            return dbPage.readBoolean(dbPage.getPageSize() - 5);
+        }
+
+
+        /**
+         * Set the boolean flag for whether this block is in the linked-list of
+         * free blocks or not.
+         *
+         * @param dbPage the data page to set the boolean flag for
+         * @param isInLinkedList boolean value to set
+         */
+        public static void setIsInLinkedList(DBPage dbPage,
+                                             boolean isInLinkedList) {
+            // The value is stored in the 5th to last byte of the page
+            dbPage.writeBoolean(dbPage.getPageSize() - 5, isInLinkedList);
         }
 
     }

@@ -45,14 +45,14 @@ size  5013504
 
 
 # after linked-list
-storage.pagesRead = 200740
-storage.pagesWritten = 83450
+storage.pagesRead = 200708
+storage.pagesWritten = 83281
 storage.fileChanges = 1
-storage.fileDistanceTraveled = 524894816
+storage.fileDistanceTraveled = 524697184
 
-real  0m7.423s
-user  0m10.532s
-sys   0m0.888s
+real  0m7.289s
+user  0m10.572s
+sys   0m0.704s
 
 size  5062656
 
