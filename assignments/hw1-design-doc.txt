@@ -70,7 +70,7 @@ C1.  Briefly describe your strategy for determining when tuples need to
 
      Our strategy was to unpin tuples when they were no longer being used
      by the database, i.e. when the tuple objects were no longer referenced
-     by the program during the command. Thus, tuples were unpinned after
+     by the code to access its data. Thus, tuples were unpinned after
      the plan-nodes executed commands on them. Also, the select plan-node
      unpinned tuples when they did not satisfy the selection predicate.
 

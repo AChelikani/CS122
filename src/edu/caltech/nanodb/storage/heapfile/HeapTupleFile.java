@@ -409,6 +409,12 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
         DataPage.sanityCheck(nextPage);
 
+        // We need to unpin the tuple given in the argument if it was part of
+        // a INSERT ... SELECT statement.
+        if (tup.isPinned()) {
+            tup.unpin();
+        }
+
         // At this point, only 2 pages are still pinned: the header page and
         // the page we inserted the tuple into. We unpin both pages and also
         // unpin the newly added tuple.
