@@ -229,19 +229,11 @@ page_scan:  // So we can break out of the outer loop from inside the inner one
             throw new IllegalArgumentException(
                 "Tuple must be of type HeapFilePageTuple; got " + tup.getClass());
         }
-        HeapFilePageTuple ptup = (HeapFilePageTuple) tup;
-
-        DBPage dbPage = ptup.getDBPage();
-        DBFile dbFile = dbPage.getDBFile();
-
-        // Pin the current page, as it will be unpinned before a tuple
-        // is loaded or moving to the next page.
-        dbPage.pin();
-
-        /** NEW DONNIE CODE HERE
         // Retrieve the location info from the previous tuple.  Since the
         // tuple (and/or its backing page) may already have a pin-count of 0,
         // we can't necessarily use the page itself.
+        HeapFilePageTuple ptup = (HeapFilePageTuple) tup;
+
         DBPage prevDBPage = ptup.getDBPage();
         DBFile dbFile = prevDBPage.getDBFile();
         int prevPageNo = prevDBPage.getPageNo();
@@ -252,7 +244,6 @@ page_scan:  // So we can break out of the outer loop from inside the inner one
         // page is still in the Buffer Manager's cache, it will not be read
         // from disk, so this won't be expensive in that case.)
         DBPage dbPage = storageManager.loadDBPage(dbFile, prevPageNo);
-        **/
 
         HeapFilePageTuple nextTup = null;
 
