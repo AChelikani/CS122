@@ -401,6 +401,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             logger.debug("Removed page " + nextPageIndex + " from linked-list");
             nextPageIndex = DataPage.MetaData.getNextFreeBlock(nextPage);
             DataPage.MetaData.setNextFreeBlock(nextPage, 0);
+            DataPage.MetaData.setIsInLinkedList(nextPage, false);
             HeaderPage.setNextFreeBlock(headerPage, nextPageIndex);
 
             nextPage.unpin(); // unpin the evicted page (no longer needed).
@@ -417,6 +418,10 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
             // Add this page to the linked list.
             HeaderPage.setNextFreeBlock(headerPage, nextPageIndex);
+
+            // Mark as active page in linked-list.
+            DataPage.MetaData.setNextFreeBlock(nextPage, 0);
+            DataPage.MetaData.setIsInLinkedList(nextPage, true);
         }
 
         // Insert the tuple into the page.
@@ -430,6 +435,12 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             HeapFilePageTuple.storeNewTuple(schema, nextPage, slot, tupOffset, tup);
 
         DataPage.sanityCheck(nextPage);
+
+        // We need to unpin the tuple given in the argument if it was part of
+        // a INSERT ... SELECT statement.
+        if (tup.isPinned()) {
+            tup.unpin();
+        }
 
         // At this point, only 2 pages are still pinned: the header page and
         // the page we inserted the tuple into. We unpin both pages and also
@@ -490,7 +501,11 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         // so that the tuple can still be unpinned, etc.
 
         // Since a tuple was deleted, we assume this page has space for new
-        // tuples now. Add this page back to the linked-list.
+        // tuples now. If this page is not in the linked-list already, add it
+        // back to the linked-list.
+        if (DataPage.MetaData.isInLinkedList(dbPage))
+            return;
+
         int thisPageIndex = dbPage.getPageNo();
 
         // Set up for linked list traversal, starting with the header page.
@@ -517,6 +532,12 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
                 DataPage.MetaData.setNextFreeBlock(currPage, thisPageIndex);
 
             DataPage.MetaData.setNextFreeBlock(dbPage, nextPageIndex);
+            DataPage.MetaData.setIsInLinkedList(dbPage, true);
+        } else {
+            // Should not reach here, otherwise internal state is inconsistent.
+            logger.warn(
+                    "Page" + thisPageIndex +
+                    " is in linked-list but is not flagged correctly.");
         }
 
         currPage.unpin();   // Unpin pages.
