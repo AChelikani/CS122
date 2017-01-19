@@ -567,62 +567,85 @@ public abstract class PageTuple implements Tuple {
         // Get the data type for this column (CHAR, VARCHAR, INT, etc.)
         ColumnType dataType = schema.getColumnInfo(iCol).getType();
 
-        // If the column is variable length (VARCHAR), then adjust space.
+        // Get space needed for new value.
+        int varcharLength = 0;
         if (dataType.getBaseType() == SQLDataType.VARCHAR) {
+            varcharLength = TypeConverter.getStringValue(value).length();
+        }
+        int newSize = getStorageSize(dataType, varcharLength);
 
-            // Get space needed for new value.
-            int varcharLength = TypeConverter.getStringValue(value).length();
-            int newSize = getStorageSize(dataType, varcharLength);
+        // In the following if, else if, else blocks, we get the proper offset
+        // where we want to store the new value, and simultaneously adjust the
+        // space used depending on the size of the new value.
+        //
+        // There are three cases, reported in the order they are coded in:
+        //   1. The column is previously NULL. Just expand by the space needed.
+        //   2. The column is VARCHAR and has a previous value already.
+        //      Adjust space as needed, either increasing or decreasing.
+        //   3. The column is not NULL, and is not VARCHAR. This means it is a
+        //      fixed size type. Just use the cached offset.
+        int offset = -1;
 
-            // Column is previously null, so insert new space.
-            if (isNullValue(iCol)) {
-                setNullFlag(iCol, false);
+        // Column is previously null, so insert new space.
+        if (isNullValue(iCol)) {
+            setNullFlag(iCol, false);
 
-                // Find the offset amount in which to insert the value.
-                int offset = getEndOffset();
-
-                // Iterate over subsequent columns to get appropriate offset.
-                for (int i = iCol + 1; i < schema.numColumns(); i++) {
-                    if (!getNullFlag(i)) {
-                        offset = valueOffsets[i];
-                        break;
-                    }
+            // Find the offset of the next valid column, which is where we
+            // insert additional bytes to store this current value. If none
+            // of the remaining columns are valid, then use the end offset.
+            int insertOffset = getEndOffset();
+            for (int i = iCol + 1; i < schema.numColumns(); i++) {
+                if (!getNullFlag(i)) {
+                    insertOffset = valueOffsets[i];
+                    break;
                 }
-
-                // Create space for the new value. Update page offset.
-                insertTupleDataRange(offset, newSize);
-                pageOffset -= newSize;
-
-                // Update valueOffsets.
-                computeValueOffsets();
             }
 
-            // Column has a previous value. Update the space used accordingly.
+            // Create space for the new value. Update tuple and page offset.
+            insertTupleDataRange(insertOffset, newSize);
+            offset = insertOffset - newSize;
+            pageOffset -= newSize;
+        }
+
+        // VARCHAR column has a previous value. Update the space used.setN
+        else if (dataType.getBaseType() == SQLDataType.VARCHAR) {
+            // Get the offset and size of data currently in column.
+            int oldOffset = valueOffsets[iCol];
+            int oldSize = getColumnValueSize(dataType, oldOffset);
+
+            // Increase space if new value is larger than old value.
+            if (newSize - oldSize > 0) {
+                int bytesToInsert = newSize - oldSize;
+                insertTupleDataRange(oldOffset, bytesToInsert);
+                offset = oldOffset - bytesToInsert;
+                pageOffset -= bytesToInsert;
+            }
+
+            // Reclaim unused space if new value is smaller than old value.
+            else if (oldSize - newSize > 0) {
+                int bytesToDelete = oldSize - newSize;
+                deleteTupleDataRange(oldOffset, bytesToDelete);
+                offset = oldOffset + bytesToDelete;
+                pageOffset += bytesToDelete;
+            }
+
+            // No space adjustment required.
             else {
-                int offset = valueOffsets[iCol];
-                int oldSize = getColumnValueSize(dataType, offset);
-
-                // Increase space if new value is larger than old value.
-                if (newSize - oldSize > 0) {
-                    insertTupleDataRange(offset, newSize - oldSize);
-                }
-
-                // Reclaim unused space if new value is smaller than old value.
-                else if (oldSize - newSize > 0) {
-                    deleteTupleDataRange(offset, oldSize - newSize);
-                }
-
-                // Adjust pageOffset by the column size changes.
-                // If oldSize == newSize, pageOffset will not be changed.
-                pageOffset -= (newSize - oldSize);
-
-                // Update valueOffsets.
-                computeValueOffsets();
+                offset = oldOffset;
             }
         }
 
-        // With space possibly adjusted, now just write the value.
-        writeNonNullValue(dbPage, valueOffsets[iCol], dataType, value);
+        // Not null, so valueOffsets is valid. Not VARCHAR, so no space updates.
+        // Then, just use the offset cached in valueOffsets.
+        else {
+            offset = valueOffsets[iCol];
+        }
+
+        // At this point offset should be the index where we want to store the
+        // updated value, and the space should be properly adjusted. Write the
+        // value and compute the new ValueOffsets.
+        writeNonNullValue(dbPage, offset, dataType, value);
+        computeValueOffsets();
     }
 
 

@@ -711,7 +711,7 @@ public class DataPage {
         boolean needsChange = false;
         int lastSlot = numSlots - 1;
 
-        while (getSlotValue(dbPage, lastSlot) == EMPTY_SLOT && lastSlot > 0) {
+        while (lastSlot >= 0 && getSlotValue(dbPage, lastSlot) == EMPTY_SLOT) {
             needsChange = true;
             lastSlot -= 1;
         }
