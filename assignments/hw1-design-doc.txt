@@ -6,7 +6,7 @@ A:  Logistics
 
 A1.  List your team name and the people who worked on this assignment.
 
-     Make Databases Great Again
+     sqLIT
 
      Advith Chelikani
      Joon Lee
@@ -17,8 +17,8 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      of your repository tags with this command:  git show-ref --tags)
 
      Repository URL:  https://github.com/AChelikani/CS122
-     Tag name:        <tag>
-     Commit hash:     <hash>
+     Tag name:        hw1
+     Commit hash:     b2a23ee33694701d74ac3c632f22a65d4afdee5d
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
@@ -29,7 +29,7 @@ A4.  Briefly describe what parts of the assignment each teammate focused on.
 
      Advith: Set-up, deleting tuples, updating tuples
      Joon: Buffer management
-     Charlie:
+     Charlie: Storage performance
 
 B:  Deleting and Updating Tuples
 --------------------------------
@@ -145,7 +145,7 @@ D5.  Describe your criteria for when a page is considered to be "full."
      The only time pages are marked "full" is during an insert operation with
      a tuple that does not fit, rather than after an insert that fills the page.
 
-     We chose this implementation because it is simpler. We do not need to set 
+     We chose this implementation because it is simpler. We do not need to set
      arbitrary or inefficient limits for the criteria of "full" pages. For
      example, if we choose the maximum size of new tuples as the limit, a lot of
      space can be wasted. Any other limit would not guarantee that the next
