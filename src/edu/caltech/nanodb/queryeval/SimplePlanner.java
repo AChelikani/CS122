@@ -79,7 +79,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
             logger.debug("From clause");
             plan = processFromClause(fromClause);
             // For when AS is used to rename table from a FROM clause
-            if (fromClause.getClauseType() != ClauseType.JOIN_EXPR && fromClause.isRenamed()) {
+            if (fromClause.isRenamed()) {
 	    		plan = new RenameNode(plan, fromClause.getResultName());
         	}
         }
