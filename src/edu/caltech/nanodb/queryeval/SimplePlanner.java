@@ -56,11 +56,8 @@ public class SimplePlanner extends AbstractPlannerImpl {
         List<SelectClause> enclosingSelects) throws IOException {
 
         // TODO:
-        // NATURAL JOINS with USING clause
-        // LEFT and RIGHT JOINS
-        // Subqueries in FROM clause
+        // Confirm JOINS work once NestedLoopJoinNode is done
         // GROUPING and AGGREGATION
-        // ORDER BY clause (done)
 
         // For HW1, we have a very simple implementation that defers to
         // makeSimpleSelect() to handle simple SELECT queries with one table,
