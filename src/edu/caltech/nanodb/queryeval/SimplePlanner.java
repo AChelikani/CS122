@@ -16,6 +16,7 @@ import edu.caltech.nanodb.queryast.FromClause;
 import edu.caltech.nanodb.queryast.FromClause.ClauseType;
 import edu.caltech.nanodb.queryast.SelectClause;
 
+import edu.caltech.nanodb.expressions.ColumnName;
 import edu.caltech.nanodb.expressions.Expression;
 import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
 
@@ -55,7 +56,6 @@ public class SimplePlanner extends AbstractPlannerImpl {
 
         // TODO:
         // Confirm JOINS work once NestedLoopJoinNode is done
-        // GROUPING and AGGREGATION
 
         // For HW1, we have a very simple implementation that defers to
         // makeSimpleSelect() to handle simple SELECT queries with one table,
@@ -83,64 +83,68 @@ public class SimplePlanner extends AbstractPlannerImpl {
         }
 
         // Where clause
-        if (selClause.getWhereExpr() != null) {
+        Expression whereExpr = selClause.getWhereExpr();
+        if (whereExpr != null) {
             logger.debug("Where clause");
-            plan = new SimpleFilterNode(plan, selClause.getWhereExpr());
+            if (containsAggregateFunction(whereExpr)) {
+                throw new IllegalArgumentException("Where clauses cannot contain aggregation " +
+                        "functions");
+            }
+            plan = new SimpleFilterNode(plan, whereExpr);
         }
 
         /*
-            Todo for Aggregation:
-            #1. Implement custom ExpressionProcessor
-                #1. Map from auto-generated -> aggregate function
+            Todo for Grouping and Aggregation:
 
-            First (Group by x where x is 1 column):
-                1. Scan SELECT clauses to identify all aggregate functions
-                2. Replace with auto-generated column references
-                3. Group and aggregate all functions identified above
-                4. Project using correct select values and correct names
-
-                Add-on: Also scan HAVING clauses
-
-            Next (Group by x where x can be an expression):
-                1. When scanning, also scan grouping expressions for expressions like (a-b)
-
-            IllegalArgumentException on:
-                1. Make sure WHERE and ON clauses don't contain aggregates using ExpressionProcessor
-                2. No Aggregate inside aggregate
-
-            References:
-                1. Expression class traverse()
-                2. Expression Processor
-                3. FunctionCall.getFunction()
-                4. ColumnValue class (replacing function call with column-reference)
-                5. HashedGroupAggregateNode
+            1. Scan GROUP BY expressions
 
          */
 
-        // Group and Aggregation
-        if (!selClause.getGroupByExprs().isEmpty()) {
-            GroupAggregationProcessor processor = new GroupAggregationProcessor();
+        // Grouping and Aggregation
 
-            List<SelectValue> selectValues = selClause.getSelectValues();
-            for (SelectValue sv : selectValues) {
-                if (!sv.isExpression()) {
-                    continue;
-                }
-                Expression e = sv.getExpression().traverse(processor);
-                sv.setExpression(e);
+        GroupAggregationProcessor processor = new GroupAggregationProcessor();
+
+        List<Expression> groupByExprs = selClause.getGroupByExprs();
+        if (groupByExprs.size() > 0) {
+            // Scan GROUP BY clause
+            List<SelectValue> groupByProjectionSpec
+                    = processor.processGroupByExprs(groupByExprs);
+            if (groupByProjectionSpec.size() > 0) {
+                groupByProjectionSpec.add(new SelectValue(new ColumnName(null)));
+                plan = new ProjectNode(plan, groupByProjectionSpec);
             }
-
-            // Todo: Scan HAVING
-
-            Map<String, FunctionCall> aggregates = processor.getAggregateMap();
-
-            plan = new HashedGroupAggregateNode(plan, selClause.getGroupByExprs(), aggregates);
-
         }
 
-        // For selects that are not select *
-        else if (!selClause.isTrivialProject()) {
-            plan = new ProjectNode(plan, selClause.getSelectValues());
+        // Scan SELECT clause for aggregate functions
+        List<SelectValue> selectValues = selClause.getSelectValues();
+        for (SelectValue sv : selectValues) {
+            if (!sv.isExpression()) {
+                continue;
+            }
+            Expression e = sv.getExpression().traverse(processor);
+            sv.setExpression(e);
+        }
+
+        // Scan HAVING clause
+        Expression havingExpr = selClause.getHavingExpr();
+        Expression newHavingExpr = null;
+        if (havingExpr != null) {
+            newHavingExpr = havingExpr.traverse(processor);
+        }
+
+        processor.renameSelectValues(selectValues);
+        Map<String, FunctionCall> aggregates = processor.getAggregateMap();
+
+        if (!aggregates.isEmpty() || !selClause.getGroupByExprs().isEmpty()) {
+            plan = new HashedGroupAggregateNode(plan, selClause.getGroupByExprs(), aggregates);
+        }
+
+        if (newHavingExpr != null) {
+            plan = new SimpleFilterNode(plan, newHavingExpr);
+        }
+
+        if (!selClause.isTrivialProject()) {
+            plan = new ProjectNode(plan, selectValues);
         }
 
         // If order by clause
@@ -164,6 +168,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
      * @throws IOException if an error occurs because of invalid FROM clause.
      */
     public PlanNode processFromClause(FromClause fromClause) throws IOException {
+
         PlanNode plan;
         if (fromClause.getClauseType() == ClauseType.BASE_TABLE) {
             logger.debug("Base Table");
@@ -175,6 +180,12 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = makePlan(fromClause.getSelectClause(), null);
         } else if (fromClause.getClauseType() == ClauseType.JOIN_EXPR) {
             logger.debug("Join query");
+            if (fromClause.getConditionType() == FromClause.JoinConditionType.JOIN_ON_EXPR) {
+                if (containsAggregateFunction(fromClause.getOnExpression())) {
+                    throw new IllegalArgumentException("ON clauses cannot contain aggregate " +
+                            "functions");
+                }
+            }
             plan = new NestedLoopJoinNode(
                 processFromClause(fromClause.getLeftChild()),
                 processFromClause(fromClause.getRightChild()),
@@ -184,6 +195,15 @@ public class SimplePlanner extends AbstractPlannerImpl {
             throw new UnsupportedOperationException("Invalid FROM clause");
         }
         return plan;
+    }
+
+    /**
+     * DOCUMENTATION NEEDED
+     */
+    public boolean containsAggregateFunction(Expression e) {
+        GroupAggregationProcessor processor = new GroupAggregationProcessor();
+        e.traverse(processor);
+        return !processor.getAggregateMap().isEmpty();
     }
 
     /**
