@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
 
+import edu.caltech.nanodb.expressions.OrderByExpression;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.queryast.FromClause;
@@ -76,29 +77,28 @@ public class SimplePlanner extends AbstractPlannerImpl {
             logger.debug("No from clause");
             plan = new ProjectNode(selClause.getSelectValues());
         } else {
-            logger.debug("From clause");
+            logger.debug("From clause: " + fromClause.toString());
             plan = processFromClause(fromClause);
-            // For when AS is used to rename table from a FROM clause
-            if (fromClause.isRenamed()) {
-	    		plan = new RenameNode(plan, fromClause.getResultName());
-        	}
         }
 
         // Where clause
-        if (selClause.getWhereExpr() != null) {
-            logger.debug("Where clause");
-            plan = new SimpleFilterNode(plan, selClause.getWhereExpr());
+        Expression whereClause = selClause.getWhereExpr();
+        if (whereClause != null) {
+            logger.debug("Where clause: " + whereClause.toString());
+            plan = new SimpleFilterNode(plan, whereClause);
         }
 
         // For selects that are not select *
         if (!selClause.isTrivialProject()) {
+            logger.debug("Trivial project: " + selClause.getSelectValues());
             plan = new ProjectNode(plan, selClause.getSelectValues());
         }
 
         // If order by clause
-        if (!selClause.getOrderByExprs().isEmpty()) {
-            logger.debug("Order by clause");
-            plan = new SortNode(plan, selClause.getOrderByExprs());
+        List<OrderByExpression> orderByClause = selClause.getOrderByExprs();
+        if (!orderByClause.isEmpty()) {
+            logger.debug("Order by clause: " + orderByClause);
+            plan = new SortNode(plan, orderByClause);
         }
 
         plan.prepare();
@@ -109,7 +109,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
      * Returns a PlanNode based on what is contained within the FROM clause.
      *
      *
-     * @param FromClause The FROM clause that we are processing.
+     * @param fromClause The FROM clause that we are processing.
      *
      * @return A new PlanNode with the contnets of the processed FROM clause.
      *
@@ -117,24 +117,51 @@ public class SimplePlanner extends AbstractPlannerImpl {
      */
     public PlanNode processFromClause(FromClause fromClause) throws IOException {
         PlanNode plan;
-        if (fromClause.getClauseType() == ClauseType.BASE_TABLE) {
-            logger.debug("Base Table");
+
+        switch (fromClause.getClauseType()) {
             // No enclosing selects or predicate
-            plan = makeSimpleSelect(fromClause.getTableName(), null, null);
-        } else if (fromClause.getClauseType() == ClauseType.SELECT_SUBQUERY) {
-            logger.debug("Select Subquery");
-            // No enclosing selects
-            plan = makePlan(fromClause.getSelectClause(), null);
-        } else if (fromClause.getClauseType() == ClauseType.JOIN_EXPR) {
-            logger.debug("Join query");
-            plan = new NestedLoopJoinNode(
-                processFromClause(fromClause.getLeftChild()),
-                processFromClause(fromClause.getRightChild()),
-                fromClause.getJoinType(),
-                fromClause.getComputedJoinExpr());
-        } else {
-            throw new UnsupportedOperationException("Invalid FROM clause");
+            case BASE_TABLE: {
+                String baseTableName = fromClause.getTableName();
+                logger.debug("Base Table: " + baseTableName);
+                plan = makeSimpleSelect(baseTableName, null, null);
+                break;
+            }
+
+            // Such as: SELECT * FROM (SELECT ...)
+            case SELECT_SUBQUERY: {
+                SelectClause innerSelect = fromClause.getSelectClause();
+                logger.debug("Select Subquery: " + innerSelect.toString());
+
+                // No enclosing selects
+                // TODO unsure if should be using enclosingSelects = null
+                plan = makePlan(innerSelect, null);
+                break;
+            }
+
+            // Such as: SELECT * FROM table1 AS t1 INNER JOIN table2 AS t2 ...
+            case JOIN_EXPR: {
+                logger.debug("Join query: " + fromClause.getJoinType());
+
+                // Recursively process left and right children with this method.
+                plan = new NestedLoopJoinNode(
+                                processFromClause(fromClause.getLeftChild()),
+                                processFromClause(fromClause.getRightChild()),
+                                fromClause.getJoinType(),
+                                fromClause.getComputedJoinExpr());
+                break;
+            }
+
+            // Unimplemented or unsupported at the moment
+            case TABLE_FUNCTION:
+            default:
+                throw new UnsupportedOperationException("Invalid FROM clause");
         }
+
+        // For when AS is used to rename table from a FROM clause
+        if (fromClause.isRenamed()) {
+            plan = new RenameNode(plan, fromClause.getResultName());
+        }
+
         return plan;
     }
 

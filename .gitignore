@@ -9,3 +9,7 @@ build
 
 # Mac files
 .DS_Store
+
+# Misc text files
+out.txt
+
