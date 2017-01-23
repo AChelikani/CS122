@@ -2,9 +2,14 @@ package edu.caltech.nanodb.queryeval;
 
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
 
+import edu.caltech.nanodb.expressions.FunctionCall;
+import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
+import edu.caltech.nanodb.plannodes.*;
+import edu.caltech.nanodb.queryast.SelectValue;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.queryast.FromClause;
@@ -12,16 +17,9 @@ import edu.caltech.nanodb.queryast.FromClause.ClauseType;
 import edu.caltech.nanodb.queryast.SelectClause;
 
 import edu.caltech.nanodb.expressions.Expression;
+import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
 
-import edu.caltech.nanodb.plannodes.FileScanNode;
-import edu.caltech.nanodb.plannodes.PlanNode;
 import edu.caltech.nanodb.plannodes.SelectNode;
-import edu.caltech.nanodb.plannodes.ProjectNode;
-import edu.caltech.nanodb.plannodes.SortNode;
-import edu.caltech.nanodb.plannodes.SimpleFilterNode;
-import edu.caltech.nanodb.plannodes.RenameNode;
-import edu.caltech.nanodb.plannodes.SelectNode;
-import edu.caltech.nanodb.plannodes.NestedLoopJoinNode;
 
 import edu.caltech.nanodb.plannodes.SimpleFilterNode;
 import edu.caltech.nanodb.relations.TableInfo;
@@ -90,8 +88,58 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = new SimpleFilterNode(plan, selClause.getWhereExpr());
         }
 
+        /*
+            Todo for Aggregation:
+            #1. Implement custom ExpressionProcessor
+                #1. Map from auto-generated -> aggregate function
+
+            First (Group by x where x is 1 column):
+                1. Scan SELECT clauses to identify all aggregate functions
+                2. Replace with auto-generated column references
+                3. Group and aggregate all functions identified above
+                4. Project using correct select values and correct names
+
+                Add-on: Also scan HAVING clauses
+
+            Next (Group by x where x can be an expression):
+                1. When scanning, also scan grouping expressions for expressions like (a-b)
+
+            IllegalArgumentException on:
+                1. Make sure WHERE and ON clauses don't contain aggregates using ExpressionProcessor
+                2. No Aggregate inside aggregate
+
+            References:
+                1. Expression class traverse()
+                2. Expression Processor
+                3. FunctionCall.getFunction()
+                4. ColumnValue class (replacing function call with column-reference)
+                5. HashedGroupAggregateNode
+
+         */
+
+        // Group and Aggregation
+        if (!selClause.getGroupByExprs().isEmpty()) {
+            GroupAggregationProcessor processor = new GroupAggregationProcessor();
+
+            List<SelectValue> selectValues = selClause.getSelectValues();
+            for (SelectValue sv : selectValues) {
+                if (!sv.isExpression()) {
+                    continue;
+                }
+                Expression e = sv.getExpression().traverse(processor);
+                sv.setExpression(e);
+            }
+
+            // Todo: Scan HAVING
+
+            Map<String, FunctionCall> aggregates = processor.getAggregateMap();
+
+            plan = new HashedGroupAggregateNode(plan, selClause.getGroupByExprs(), aggregates);
+
+        }
+
         // For selects that are not select *
-        if (!selClause.isTrivialProject()) {
+        else if (!selClause.isTrivialProject()) {
             plan = new ProjectNode(plan, selClause.getSelectValues());
         }
 
