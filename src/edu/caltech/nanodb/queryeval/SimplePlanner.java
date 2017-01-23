@@ -4,25 +4,30 @@ package edu.caltech.nanodb.queryeval;
 import java.io.IOException;
 import java.util.Map;
 import java.util.List;
-import java.util.ArrayList;
 
-import edu.caltech.nanodb.expressions.FunctionCall;
-import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
-import edu.caltech.nanodb.plannodes.*;
-import edu.caltech.nanodb.queryast.SelectValue;
 import org.apache.log4j.Logger;
 
+import edu.caltech.nanodb.expressions.ColumnName;
+import edu.caltech.nanodb.expressions.Expression;
+import edu.caltech.nanodb.expressions.FunctionCall;
+import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
+import edu.caltech.nanodb.expressions.OrderByExpression;
+
+import edu.caltech.nanodb.plannodes.HashedGroupAggregateNode;
+import edu.caltech.nanodb.plannodes.ProjectNode;
+import edu.caltech.nanodb.plannodes.SelectNode;
+import edu.caltech.nanodb.plannodes.SimpleFilterNode;
+import edu.caltech.nanodb.plannodes.PlanNode;
+import edu.caltech.nanodb.plannodes.NestedLoopJoinNode;
+import edu.caltech.nanodb.plannodes.FileScanNode;
+import edu.caltech.nanodb.plannodes.RenameNode;
+import edu.caltech.nanodb.plannodes.SortNode;
+
+import edu.caltech.nanodb.queryast.SelectValue;
 import edu.caltech.nanodb.queryast.FromClause;
 import edu.caltech.nanodb.queryast.FromClause.ClauseType;
 import edu.caltech.nanodb.queryast.SelectClause;
 
-import edu.caltech.nanodb.expressions.ColumnName;
-import edu.caltech.nanodb.expressions.Expression;
-import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
-
-import edu.caltech.nanodb.plannodes.SelectNode;
-
-import edu.caltech.nanodb.plannodes.SimpleFilterNode;
 import edu.caltech.nanodb.relations.TableInfo;
 
 
@@ -74,18 +79,14 @@ public class SimplePlanner extends AbstractPlannerImpl {
             logger.debug("No from clause");
             plan = new ProjectNode(selClause.getSelectValues());
         } else {
-            logger.debug("From clause");
+            logger.debug("From clause: " + fromClause.toString());
             plan = processFromClause(fromClause);
-            // For when AS is used to rename table from a FROM clause
-            if (fromClause.isRenamed()) {
-	    		plan = new RenameNode(plan, fromClause.getResultName());
-        	}
         }
 
         // Where clause
         Expression whereExpr = selClause.getWhereExpr();
         if (whereExpr != null) {
-            logger.debug("Where clause");
+            logger.debug("Where clause: " + whereExpr.toString());
             if (containsAggregateFunction(whereExpr)) {
                 throw new IllegalArgumentException("Where clauses cannot contain aggregation " +
                         "functions");
@@ -148,9 +149,10 @@ public class SimplePlanner extends AbstractPlannerImpl {
         }
 
         // If order by clause
-        if (!selClause.getOrderByExprs().isEmpty()) {
-            logger.debug("Order by clause");
-            plan = new SortNode(plan, selClause.getOrderByExprs());
+        List<OrderByExpression> orderByClause = selClause.getOrderByExprs();
+        if (!orderByClause.isEmpty()) {
+            logger.debug("Order by clause: " + orderByClause);
+            plan = new SortNode(plan, orderByClause);
         }
 
         plan.prepare();
@@ -161,7 +163,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
      * Returns a PlanNode based on what is contained within the FROM clause.
      *
      *
-     * @param FromClause The FROM clause that we are processing.
+     * @param fromClause The FROM clause that we are processing.
      *
      * @return A new PlanNode with the contnets of the processed FROM clause.
      *
@@ -170,30 +172,59 @@ public class SimplePlanner extends AbstractPlannerImpl {
     public PlanNode processFromClause(FromClause fromClause) throws IOException {
 
         PlanNode plan;
-        if (fromClause.getClauseType() == ClauseType.BASE_TABLE) {
-            logger.debug("Base Table");
+
+        switch (fromClause.getClauseType()) {
             // No enclosing selects or predicate
-            plan = makeSimpleSelect(fromClause.getTableName(), null, null);
-        } else if (fromClause.getClauseType() == ClauseType.SELECT_SUBQUERY) {
-            logger.debug("Select Subquery");
-            // No enclosing selects
-            plan = makePlan(fromClause.getSelectClause(), null);
-        } else if (fromClause.getClauseType() == ClauseType.JOIN_EXPR) {
-            logger.debug("Join query");
-            if (fromClause.getConditionType() == FromClause.JoinConditionType.JOIN_ON_EXPR) {
-                if (containsAggregateFunction(fromClause.getOnExpression())) {
-                    throw new IllegalArgumentException("ON clauses cannot contain aggregate " +
-                            "functions");
-                }
+            case BASE_TABLE: {
+                String baseTableName = fromClause.getTableName();
+                logger.debug("Base Table: " + baseTableName);
+                plan = makeSimpleSelect(baseTableName, null, null);
+                break;
             }
-            plan = new NestedLoopJoinNode(
-                processFromClause(fromClause.getLeftChild()),
-                processFromClause(fromClause.getRightChild()),
-                fromClause.getJoinType(),
-                fromClause.getComputedJoinExpr());
-        } else {
-            throw new UnsupportedOperationException("Invalid FROM clause");
+
+            // Such as: SELECT * FROM (SELECT ...)
+            case SELECT_SUBQUERY: {
+                SelectClause innerSelect = fromClause.getSelectClause();
+                logger.debug("Select Subquery: " + innerSelect.toString());
+
+                // No enclosing selects
+                // TODO unsure if should be using enclosingSelects = null
+                plan = makePlan(innerSelect, null);
+                break;
+            }
+
+            // Such as: SELECT * FROM table1 AS t1 INNER JOIN table2 AS t2 ...
+            case JOIN_EXPR: {
+                logger.debug("Join query: " + fromClause.getJoinType());
+
+                // Check that ON clause does not contain aggregate functions
+                if (fromClause.getConditionType() == FromClause.JoinConditionType.JOIN_ON_EXPR) {
+                    if (containsAggregateFunction(fromClause.getOnExpression())) {
+                        throw new IllegalArgumentException("ON clauses cannot contain aggregate " +
+                                "functions");
+                    }
+                }
+
+                // Recursively process left and right children with this method.
+                plan = new NestedLoopJoinNode(
+                                processFromClause(fromClause.getLeftChild()),
+                                processFromClause(fromClause.getRightChild()),
+                                fromClause.getJoinType(),
+                                fromClause.getComputedJoinExpr());
+                break;
+            }
+
+            // Unimplemented or unsupported at the moment
+            case TABLE_FUNCTION:
+            default:
+                throw new UnsupportedOperationException("Invalid FROM clause");
         }
+
+        // For when AS is used to rename table from a FROM clause
+        if (fromClause.isRenamed()) {
+            plan = new RenameNode(plan, fromClause.getResultName());
+        }
+
         return plan;
     }
 

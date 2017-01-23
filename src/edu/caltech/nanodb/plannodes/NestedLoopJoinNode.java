@@ -4,6 +4,7 @@ package edu.caltech.nanodb.plannodes;
 import java.io.IOException;
 import java.util.List;
 
+import edu.caltech.nanodb.expressions.TupleLiteral;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.expressions.Expression;
@@ -31,6 +32,9 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
 
     /** Most recently retrieved tuple of the right relation. */
     private Tuple rightTuple;
+
+    /** A tuple with the same number of columns as rightTuple but all null */
+    private Tuple rightNullPaddedTuple;
 
 
     /** Set to true when we have exhausted all tuples from our subplans. */
@@ -154,11 +158,19 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         leftChild.prepare();
         rightChild.prepare();
 
+        // RIGHT OUTER JOIN is the same as LEFT OUTER JOIN but swapped.
+        if (joinType == JoinType.RIGHT_OUTER) {
+            swap();
+            joinType = JoinType.LEFT_OUTER;
+        }
+
         // Use the parent class' helper-function to prepare the schema.
         prepareSchemaStats();
 
-        // TODO:  Implement the rest
         cost = null;
+
+        // TODO:  Implement the rest [not sure what else is needed]
+        rightNullPaddedTuple = new TupleLiteral(rightSchema.numColumns());
     }
 
 
@@ -182,11 +194,82 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         if (done)
             return null;
 
-        while (getTuplesToJoin()) {
-            if (canJoinTuples())
-                return joinTuples(leftTuple, rightTuple);
+        switch (joinType) {
+            // In INNER or CROSS join, we just process all non-void tuples
+            // and return them if they can be joined.
+            case INNER:
+            case CROSS: {
+                while (getTuplesToJoin()) {
+                    if (rightTuple != null && canJoinTuples()) {
+                        return joinTuples(leftTuple, rightTuple);
+                    }
+                }
+                break;
+            }
+
+            // In LEFT_OUTER join, we need to include left tuples that do not
+            // match any right tuples. To do this we check when the rightTuple
+            // becomes null: this signals the end of the right tuple stream.
+            // If the current leftTuple is the leftTuple we started with, then
+            // we do *not* return it (because if we started on it, then that
+            // means it matched previously). If it is *not* the leftTuple we
+            // started on, then we can return it (padded with null) because
+            // we traversed the entire right stream without a match.
+            case LEFT_OUTER: {
+                Tuple prevLeftTuple = leftTuple;
+                while (getTuplesToJoin()) {
+                    if (rightTuple == null) {
+                        if (leftTuple != prevLeftTuple) {
+                            return joinTuples(leftTuple, rightNullPaddedTuple);
+                        }
+                    }
+                    else if (canJoinTuples()) {
+                        return joinTuples(leftTuple, rightTuple);
+                    }
+                }
+                break;
+            }
+
+            // In SEMIJOIN, return all left tuples that have a match. Before
+            // traversing, we set rightTuple = null in order to restart the
+            // right stream and also advance the left stream once.
+            case SEMIJOIN: {
+                rightTuple = null;
+                while (getTuplesToJoin()) {
+                    if (rightTuple != null && canJoinTuples()) {
+                        return leftTuple;
+                    }
+                }
+                break;
+            }
+
+            // In ANTIJOIN, return all left tuples that do not match. Again we
+            // use the rightTuple == null comparison to determine the end of
+            // the right stream. If any right tuple matches, then we skip to
+            // the end of the stream by setting rightTuple = null. This
+            // restarts the right stream and also advances the left stream once.
+            case ANTIJOIN: {
+                while (getTuplesToJoin()) {
+                    if (rightTuple == null) {
+                        return leftTuple;
+                    }
+                    else if (canJoinTuples()) {
+                        rightTuple = null;
+                    }
+                }
+                break;
+            }
+
+            // This probably should not be reached, because joinType should be
+            // already filtered on what is supported. In any case, this is an
+            // additional precaution for possible bugs.
+            default: {
+                logger.warn("Trying to process JoinType of " + joinType.name());
+                return null;
+            }
         }
 
+        done = true;
         return null;
     }
 
@@ -195,12 +278,38 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
      * This helper function implements the logic that sets {@link #leftTuple}
      * and {@link #rightTuple} based on the nested-loop logic.
      *
+     * This function will set rightTuple = null at the end of the right stream.
+     *
+     * Ex. if the left stream is (L1, L2) and the right stream is
+     * (R1, R2), then subsequent calls to this method will yield:
+     *
+     * {leftTuple, rightTuple}:
+     * {L1, R1},
+     * {L1, R2},
+     * {L1, null},
+     * {L2, R1},
+     * {L2, R2},
+     * {L2, null},
+     * {null, R1}
+     *
      * @return {@code true} if another pair of tuples was found to join, or
      *         {@code false} if no more pairs of tuples are available to join.
      */
     private boolean getTuplesToJoin() throws IOException {
-        // TODO:  Implement
-        return false;
+        // If right tuple is null, reset and advance left tuple by 1.
+        if (rightTuple == null) {
+            rightChild.initialize();
+            rightTuple = rightChild.getNextTuple();
+            leftTuple = leftChild.getNextTuple();
+        }
+
+        // Otherwise, advance right tuple.
+        else {
+            rightTuple = rightChild.getNextTuple();
+        }
+
+        // Left tuple must be non-null to signify streams still have content.
+        return leftTuple != null;
     }
 
 
