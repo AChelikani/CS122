@@ -25,7 +25,6 @@ import edu.caltech.nanodb.plannodes.SortNode;
 
 import edu.caltech.nanodb.queryast.SelectValue;
 import edu.caltech.nanodb.queryast.FromClause;
-import edu.caltech.nanodb.queryast.FromClause.ClauseType;
 import edu.caltech.nanodb.queryast.SelectClause;
 
 import edu.caltech.nanodb.relations.TableInfo;
@@ -59,13 +58,6 @@ public class SimplePlanner extends AbstractPlannerImpl {
     public PlanNode makePlan(SelectClause selClause,
         List<SelectClause> enclosingSelects) throws IOException {
 
-        // TODO:
-        // Confirm JOINS work once NestedLoopJoinNode is done
-
-        // For HW1, we have a very simple implementation that defers to
-        // makeSimpleSelect() to handle simple SELECT queries with one table,
-        // and an optional WHERE clause.
-
         if (enclosingSelects != null && !enclosingSelects.isEmpty()) {
             throw new UnsupportedOperationException(
                 "Not implemented:  enclosing queries");
@@ -74,7 +66,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
         FromClause fromClause = selClause.getFromClause();
         PlanNode plan;
 
-        // Depending on if there is a from clause
+        // Process FROM clause
         if (fromClause == null) {
             logger.debug("No from clause");
             plan = new ProjectNode(selClause.getSelectValues());
@@ -83,10 +75,11 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = processFromClause(fromClause);
         }
 
-        // Where clause
+        // Process WHERE clause
         Expression whereExpr = selClause.getWhereExpr();
         if (whereExpr != null) {
             logger.debug("Where clause: " + whereExpr.toString());
+            // Check that WHERE clause does not contain aggregate functions
             if (containsAggregateFunction(whereExpr)) {
                 throw new IllegalArgumentException("Where clauses cannot contain aggregation " +
                         "functions");
@@ -94,61 +87,16 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = new SimpleFilterNode(plan, whereExpr);
         }
 
-        /*
-            Todo for Grouping and Aggregation:
-
-            1. Scan GROUP BY expressions
-
-         */
-
         // Grouping and Aggregation
-
-        GroupAggregationProcessor processor = new GroupAggregationProcessor();
-
-        List<Expression> groupByExprs = selClause.getGroupByExprs();
-        if (groupByExprs.size() > 0) {
-            // Scan GROUP BY clause
-            List<SelectValue> groupByProjectionSpec
-                    = processor.processGroupByExprs(groupByExprs);
-            if (groupByProjectionSpec.size() > 0) {
-                groupByProjectionSpec.add(new SelectValue(new ColumnName(null)));
-                plan = new ProjectNode(plan, groupByProjectionSpec);
-            }
-        }
-
-        // Scan SELECT clause for aggregate functions
-        List<SelectValue> selectValues = selClause.getSelectValues();
-        for (SelectValue sv : selectValues) {
-            if (!sv.isExpression()) {
-                continue;
-            }
-            Expression e = sv.getExpression().traverse(processor);
-            sv.setExpression(e);
-        }
-
-        // Scan HAVING clause
-        Expression havingExpr = selClause.getHavingExpr();
-        Expression newHavingExpr = null;
-        if (havingExpr != null) {
-            newHavingExpr = havingExpr.traverse(processor);
-        }
-
-        processor.renameSelectValues(selectValues);
-        Map<String, FunctionCall> aggregates = processor.getAggregateMap();
-
-        if (!aggregates.isEmpty() || !selClause.getGroupByExprs().isEmpty()) {
-            plan = new HashedGroupAggregateNode(plan, selClause.getGroupByExprs(), aggregates);
-        }
-
-        if (newHavingExpr != null) {
-            plan = new SimpleFilterNode(plan, newHavingExpr);
-        }
+        // This may modify selClause to account for aggregate functions and
+        // complex expressions in GROUP BY clauses.
+        plan = processGroupAggregation(plan, selClause);
 
         if (!selClause.isTrivialProject()) {
-            plan = new ProjectNode(plan, selectValues);
+            plan = new ProjectNode(plan, selClause.getSelectValues());
         }
 
-        // If order by clause
+        // Process ORDER BY clause
         List<OrderByExpression> orderByClause = selClause.getOrderByExprs();
         if (!orderByClause.isEmpty()) {
             logger.debug("Order by clause: " + orderByClause);
@@ -160,17 +108,17 @@ public class SimplePlanner extends AbstractPlannerImpl {
     }
 
     /**
-     * Returns a PlanNode based on what is contained within the FROM clause.
+     * Returns a PlanNode based on what is contained within the <tt>FROM</tt> clause.
      *
      *
-     * @param fromClause The FROM clause that we are processing.
+     * @param fromClause The <tt>FROM</tt> clause that we are processing.
      *
-     * @return A new PlanNode with the contnets of the processed FROM clause.
+     * @return A new PlanNode with the contents of the processed <tt>FROM</tt> clause.
      *
-     * @throws IOException if an error occurs because of invalid FROM clause.
+     * @throws IllegalArgumentException if an ON clause contains aggregate functions
+     * @throws UnsupportedOperationException if the clause type is unsupported
      */
     public PlanNode processFromClause(FromClause fromClause) throws IOException {
-
         PlanNode plan;
 
         switch (fromClause.getClauseType()) {
@@ -218,7 +166,10 @@ public class SimplePlanner extends AbstractPlannerImpl {
                 // precalculated schema that removes duplicate columns.
                 if (condType == FromClause.JoinConditionType.NATURAL_JOIN ||
                         condType == FromClause.JoinConditionType.JOIN_USING) {
-                    plan = new ProjectNode(plan, fromClause.getComputedSelectValues());
+                    List<SelectValue> computedSelectValues = fromClause.getComputedSelectValues();
+                    if (computedSelectValues != null) {
+                        plan = new ProjectNode(plan, computedSelectValues);
+                    }
                 }
 
                 break;
@@ -239,12 +190,66 @@ public class SimplePlanner extends AbstractPlannerImpl {
     }
 
     /**
-     * DOCUMENTATION NEEDED
+     * Processes the given SelectClause for grouping and aggregation.
+     * The method will scan the <tt>GROUP BY</tt> clause for complex expressions,
+     * and scan the <tt>SELECT</tt> and <tt>HAVING</tt> clauses for aggregate functions.
+     * These expressions and functions are stored in the processor
+     * and are replaced by auto-generated names.
+     *
+     * @param plan the child node of the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
+     * @param selClause the <tt>SELECT</tt> clause to process
+     *
+     * @return the resulting plan node
      */
-    public boolean containsAggregateFunction(Expression e) {
+    public PlanNode processGroupAggregation(PlanNode plan, SelectClause selClause) {
         GroupAggregationProcessor processor = new GroupAggregationProcessor();
-        e.traverse(processor);
-        return !processor.getAggregateMap().isEmpty();
+
+        // Scan GROUP BY clause
+        List<Expression> groupByExprs = selClause.getGroupByExprs();
+        plan = processGroupByClause(plan, groupByExprs, processor);
+
+        // Scan SELECT and HAVING clauses for aggregate functions, and rename SelectValues
+        // to account for auto-generated column names.
+        processAggregateFunctions(selClause, processor);
+        processor.renameSelectValues(selClause.getSelectValues());
+
+        Map<String, FunctionCall> aggregates = processor.getAggregateMap();
+        if (!aggregates.isEmpty() || !groupByExprs.isEmpty()) {
+            plan = new HashedGroupAggregateNode(plan, groupByExprs, aggregates);
+        }
+
+        if (selClause.getHavingExpr() != null) {
+            plan = new SimpleFilterNode(plan, selClause.getHavingExpr());
+        }
+
+        return plan;
+    }
+
+    /**
+     * Scan GROUP BY clause for complex expressions, map them to auto-generated column names
+     * in the processor, and create a {@link edu.caltech.nanodb.plannodes.ProjectNode} for
+     * these new columns.
+     *
+     * @param plan the child node of the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
+     * @param groupByExprs list of <tt>GROUP BY</tt> expressions to process
+     * @param processor processor in which the mappings are stored
+     *
+     * @return the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
+     */
+    public PlanNode processGroupByClause(PlanNode plan, List<Expression> groupByExprs,
+                                         GroupAggregationProcessor processor) {
+        if (groupByExprs != null && groupByExprs.size() > 0) {
+            // Create mappings from auto-generated names to expressions
+            List<SelectValue> groupByProjectionSpec = processor.processGroupByExprs(groupByExprs);
+            if (groupByProjectionSpec.size() > 0) {
+                // Add "*" wild card to include all other columns
+                groupByProjectionSpec.add(new SelectValue(new ColumnName(null)));
+                // Create GROUP BY columns using auto-generated names
+                plan = new ProjectNode(plan, groupByProjectionSpec);
+            }
+        }
+
+        return plan;
     }
 
     /**
