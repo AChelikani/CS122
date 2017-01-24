@@ -197,8 +197,10 @@ public class SimplePlanner extends AbstractPlannerImpl {
             case JOIN_EXPR: {
                 logger.debug("Join query: " + fromClause.getJoinType());
 
+                FromClause.JoinConditionType condType = fromClause.getConditionType();
+
                 // Check that ON clause does not contain aggregate functions
-                if (fromClause.getConditionType() == FromClause.JoinConditionType.JOIN_ON_EXPR) {
+                if (condType == FromClause.JoinConditionType.JOIN_ON_EXPR) {
                     if (containsAggregateFunction(fromClause.getOnExpression())) {
                         throw new IllegalArgumentException("ON clauses cannot contain aggregate " +
                                 "functions");
@@ -211,6 +213,14 @@ public class SimplePlanner extends AbstractPlannerImpl {
                                 processFromClause(fromClause.getRightChild()),
                                 fromClause.getJoinType(),
                                 fromClause.getComputedJoinExpr());
+
+                // For NATURAL joins and joins with USING, project onto
+                // precalculated schema that removes duplicate columns.
+                if (condType == FromClause.JoinConditionType.NATURAL_JOIN ||
+                        condType == FromClause.JoinConditionType.JOIN_USING) {
+                    plan = new ProjectNode(plan, fromClause.getComputedSelectValues());
+                }
+
                 break;
             }
 
