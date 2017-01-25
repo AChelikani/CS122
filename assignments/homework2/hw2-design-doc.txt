@@ -29,7 +29,7 @@ A4.  Briefly describe what parts of the assignment each teammate focused on.
 
     Advith: simple selects, subqueries in from clause, order by clause, join support in query planner
     Joon:
-    Charlie:
+    Charlie: Inner joins, left/right outer joins, semijoins, antijoins, natural joins + corresponding tests
 
 B:  Simple Planner
 ------------------
@@ -84,17 +84,57 @@ C1.  The join algorithm stated in class is really only suitable for
      operation can resume at the appropriate place when the next row
      must be returned.
 
+     INNER joins are evaluated by keeping track of the previous leftTuple
+     and rightTuple returned. The rightTuple is advanced by pulling from
+     the rightChild until an acceptable tuple pair is found. When the rightChild
+     reaches the end, it is reset and the leftChild is advanced by 1. When the
+     leftChild reaches the end of the stream, the entire loop terminates.
+
 C2.  What tweaks did you need to introduce into the implementation for
      left outer joins?  Keep your answer brief, but please also be specific.
 
+     In LEFT OUTER joins, the left tuple is tracked to make sure that if it is
+     not matched with a right tuple, it is still returned padded with null.
+
+     To do this, we maintain a consistent state of the loop: the current
+     leftTuple value upon entering getNextTuple() is the one returned by
+     the previous call. Thus, if and only if we advance the left tuple once and
+     then reach the end of the rightChild stream without finding an appropriate
+     match, then we return leftTuple padded with null.
+
 C3.  Same question as for C2, but for semijoins.
+
+     Upon matching, we advance the right stream to the end (thus forcing the
+     next iteration to advance the leftTuple) before returning the match. Thus,
+     each leftTuple is returned at most once; it is compared with the full right
+     stream; and it is returned only upon matching.
 
 C4.  Same question as for C2, but for antijoins.
 
+     Upon matching, we advance the right stream to the end and keep pulling
+     pairs of tuples. This effectively "skips" over a leftTuple that matches.
+     If we reach the end of the right stream, this means the entire right stream
+     did not match, and so we return leftTuple.
+
 C5.  Enumerate your nested-loop join test cases, following this form:
 
-     * <test-case class name>.<test function>
-       <brief one-sentence description of what the test exercises>
+     * TestSimpleJoins.testInnerJoin
+       Test INNER joins with ON condition for empty and nonempty tables.
+
+     * TestSimpleJoins.testLeftOuterJoin
+       Test LEFT OUTER joins with ON condition for empty and nonempty tables.
+
+     * TestSimpleJoins.testRightOuterJoin
+       Test RIGHT OUTER joins with ON condition for empty and nonempty tables.
+
+     * TestNaturalJoins.testNaturalJoin
+       Test NATURAL joins on two matching columns: [t1(a, b, c), t2(a, b, d)]
+
+     * TestUsingJoins.testUsingJoinSingleColumn
+       Test joins with USING on single matching column: [t1(a, b), t2(a, c)]
+
+     * TestUsingJoins.testUsingJoinDoubleColumn
+       Test joins with USING on two matching columns: [t1(a, b, c), t2(a, b, d)]
 
 D:  Extra Credit [OPTIONAL]
 ---------------------------
@@ -103,12 +143,13 @@ If you implemented any extra-credit tasks for this assignment, describe
 them here.  The description should be like this, with stuff in "<>" replaced.
 (The value i starts at 1 and increments...)
 
-D<i>:  <one-line description>
+D1:  Implemented unit tests for NATURAL and USING joins
 
-     <brief summary of what you did, including the specific classes that
-     we should look at for your implementation>
+     Tested NATURAL and USING join functionality in two files:
+       TestNaturalJoins.java
+       TestUsingJoins.java
 
-     <brief summary of test-cases that demonstrate/exercise your extra work>
+     The test cases cover multiple column joins and deduplication.
 
 E:  Feedback [OPTIONAL]
 -----------------------
