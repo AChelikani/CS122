@@ -852,7 +852,7 @@ public class FromClause {
                 ColumnInfo rhsColInfo = rightSchema.getColumnInfo(name);
 
                 result.addColumnInfo(
-                    new ColumnInfo(lhsColInfo.getName(), lhsColInfo.getType()));
+                    new ColumnInfo(lhsColInfo.getName(), lhsColInfo.getTableName(), lhsColInfo.getType()));
 
                 // Add an equality test between the common columns to the join
                 // condition.

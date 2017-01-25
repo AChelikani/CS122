@@ -72,7 +72,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = new ProjectNode(selClause.getSelectValues());
         } else {
             logger.debug("From clause: " + fromClause.toString());
-            plan = processFromClause(fromClause);
+            plan = processFromClause(fromClause, true);
         }
 
         // Process WHERE clause
@@ -118,7 +118,8 @@ public class SimplePlanner extends AbstractPlannerImpl {
      * @throws IllegalArgumentException if an ON clause contains aggregate functions
      * @throws UnsupportedOperationException if the clause type is unsupported
      */
-    public PlanNode processFromClause(FromClause fromClause) throws IOException {
+    public PlanNode processFromClause(FromClause fromClause,
+              boolean isTopFrom) throws IOException {
         PlanNode plan;
 
         switch (fromClause.getClauseType()) {
@@ -157,8 +158,8 @@ public class SimplePlanner extends AbstractPlannerImpl {
 
                 // Recursively process left and right children with this method.
                 plan = new NestedLoopJoinNode(
-                                processFromClause(fromClause.getLeftChild()),
-                                processFromClause(fromClause.getRightChild()),
+                                processFromClause(fromClause.getLeftChild(), false),
+                                processFromClause(fromClause.getRightChild(), false),
                                 fromClause.getJoinType(),
                                 fromClause.getComputedJoinExpr());
 
@@ -168,6 +169,17 @@ public class SimplePlanner extends AbstractPlannerImpl {
                         condType == FromClause.JoinConditionType.JOIN_USING) {
                     List<SelectValue> computedSelectValues = fromClause.getComputedSelectValues();
                     if (computedSelectValues != null) {
+                        // Remove placeholders for the topmost ProjectNode
+                        if (!isTopFrom) {
+                            for (int i = 0; i < computedSelectValues.size(); i++) {
+                                logger.debug("selectValues " + i + ": " + computedSelectValues.get(i));
+                                SelectValue value = computedSelectValues.get(i);
+                                Expression exp = value.getExpression();
+                                SelectValue newValue = new SelectValue(exp, null);
+                                computedSelectValues.set(i, newValue);
+                            }
+                        }
+
                         plan = new ProjectNode(plan, computedSelectValues);
                     }
                 }
