@@ -16,14 +16,20 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
 
-     Repository URL:  <url>
+     Repository URL:  https://github.com/AChelikani/CS122
      Tag name:        <tag>
      Commit hash:     <hash>
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
+     None
+
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith: simple selects, subqueries in from clause, order by clause, join support in query planner
+    Joon:
+    Charlie:
 
 B:  Simple Planner
 ------------------
@@ -32,6 +38,13 @@ B1.  Without going into the details of how you handle grouping and
      aggregation or joins, list the general sequence of steps that your
      planner's makePlan() method follows to translate a SQL query into
      an execution plan.
+
+     Checks if a from clause exists - if not then does a simple select. If it does,
+     then determine if there is no predicate, if there is a select in the from clause,
+     or there is a join and deal with the case appropriately. Then process the where
+     clause, checking to make sure there are no aggregation functions in it. Then
+     process grouping and aggregation expressions. Then check if it is a trivial project.
+     Finally, check for any order by expressions.
 
 B2.  Does your planner try to simplify plans in specific circumstances,
      e.g. when a "trivial project" is used (i.e. "SELECT * FROM ...") in
@@ -42,6 +55,12 @@ B3.  Describe how you generate the execution-plan fragment for the query's
      FromClause.  Make sure to touch on what you do in the three cases your
      planner is expected to handle - tables, subqueries in the FROM clause,
      and joins.
+
+     In the tables case (BASE_TABLE), we invoke the makeSimpleSelect on the base
+     table name. In the subqueries in FROM clause case (SELECT_SUBQUERY) we
+     invoke make plan on the inner select clause. In the joins case (JOIN_EXPR)
+     we invoke NestedLoopJoinNode on the left and right children in the from clause,
+     making sure to dedup columns when necessary.
 
 B4.  Describe how you implemented support for grouping and aggregation.
      Be sure to note any variations from the approach outlined in class,
