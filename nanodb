@@ -14,7 +14,7 @@ JAVA_OPTS="-Dlog4j.configuration=logging.conf"
 # See if we have the rlwrap utility; if so, it makes using NanoDB
 # from the command-line sooo much nicer...
 testrl=$(which rlwrap)
-if [ -z "$testrl" ] 
+if [ -z "$testrl" ]
 then
     java $JAVA_OPTS -cp $CPATH edu.caltech.nanodb.client.ExclusiveClient
 else
