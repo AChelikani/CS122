@@ -298,13 +298,19 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
     private boolean getTuplesToJoin() throws IOException {
         // If right tuple is null, reset and advance left tuple by 1.
         if (rightTuple == null) {
-            rightChild.initialize();
-            rightTuple = rightChild.getNextTuple();
+            if (leftTuple != null) {
+                leftTuple.unpin();
+            }
             leftTuple = leftChild.getNextTuple();
+            if (leftTuple != null) {
+                rightChild.initialize();
+                rightTuple = rightChild.getNextTuple();
+            }
         }
 
         // Otherwise, advance right tuple.
         else {
+            rightTuple.unpin();
             rightTuple = rightChild.getNextTuple();
         }
 

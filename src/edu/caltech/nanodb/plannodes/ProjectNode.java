@@ -427,6 +427,7 @@ public class ProjectNode extends PlanNode {
             }
         }
 
+        tuple.unpin();
         return newTuple;
     }
 
