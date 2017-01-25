@@ -28,7 +28,7 @@ A3.  Specify any late tokens you are applying to this assignment, or
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
     Advith: simple selects, subqueries in from clause, order by clause, join support in query planner
-    Joon:
+    Joon: Grouping and aggregation, unpinning during join and projection
     Charlie:
 
 B:  Simple Planner
@@ -65,6 +65,24 @@ B3.  Describe how you generate the execution-plan fragment for the query's
 B4.  Describe how you implemented support for grouping and aggregation.
      Be sure to note any variations from the approach outlined in class,
      if there are any.
+
+     First, we created the GroupAggregationProcessor class. This class
+     was used to scan the SELECT and HAVING clauses for any aggregate
+     functions, which were replaced with auto-generated column names
+     after being stored in a HashMap mapping the names to the functions.
+     This also modified the selectValues to select for the new column
+     names.
+
+     Also, we scanned the GROUP BY clause using the processor to locate
+     any complex expressions (i.e. not simple columns). These were
+     also stored in a HashMap from auto-generated names to the expressions,
+     and then a ProjectNode was used to compute and create these new
+     columns before the GroupAggregationNode was applied. Naturally,
+     when we scanned the SELECT clause for aggregate functions, we also
+     scanned for the complex expressions found in the GROUP BY clause.
+     Finally, we created a function to rename all the selected columns
+     from auto-generated names such as "#A0" to logical names such as
+     "SUM(T.C)".
 
 B5.  Describe how you implemented support for natural joins, and joins with
      a USING clause.  Focus on how you handle challenging cases, such as
