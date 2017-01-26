@@ -169,7 +169,11 @@ public class SimplePlanner extends AbstractPlannerImpl {
                         condType == FromClause.JoinConditionType.JOIN_USING) {
                     List<SelectValue> computedSelectValues = fromClause.getComputedSelectValues();
                     if (computedSelectValues != null) {
-                        // Remove placeholders for the topmost ProjectNode
+                        // Remove aliases for all nodes except the topmost
+                        // ProjectNode. Removing aliases keeps the table names
+                        // in the column names, thus eliminating ambiguity.
+                        // The topmost ProjectNode will keep the aliases which
+                        // is fine because there are no more ambiguous joins.
                         if (!isTopFrom) {
                             for (int i = 0; i < computedSelectValues.size(); i++) {
                                 logger.debug("selectValues " + i + ": " + computedSelectValues.get(i));
