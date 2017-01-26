@@ -17,8 +17,8 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      of your repository tags with this command:  git show-ref --tags)
 
      Repository URL:  https://github.com/AChelikani/CS122
-     Tag name:        <tag>
-     Commit hash:     <hash>
+     Tag name:        hw2
+     Commit hash:     86f39bb3340b9d4914a457c558bfaa9f28f2f6c2
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
@@ -53,6 +53,10 @@ B2.  Does your planner try to simplify plans in specific circumstances,
      e.g. when a "trivial project" is used (i.e. "SELECT * FROM ...") in
      your planner?  Briefly enumerate all simplifications and optimizations
      your planner employs.
+
+     Our planner has very few optimizations for right now. For now it just optimzes
+     for a trivial project. When we have a SELECT * operation, we do not use a Project
+     Node to be more efficient.
 
 B3.  Describe how you generate the execution-plan fragment for the query's
      FromClause.  Make sure to touch on what you do in the three cases your
