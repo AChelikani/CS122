@@ -27,9 +27,12 @@ A3.  Specify any late tokens you are applying to this assignment, or
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith: simple selects, subqueries in from clause, order by clause, join support in query planner
-    Joon: Grouping and aggregation (including GroupAggregationProcessor), pin/unpinning details
-    Charlie: Inner joins, left/right outer joins, semijoins, antijoins, natural joins + corresponding tests
+    Advith:   Simple selects, subqueries in from clause, order by clause,
+              join support in query planner
+    Joon:     Grouping and aggregation (including GroupAggregationProcessor),
+              pin/unpinning details
+    Charlie:  Inner joins, left/right outer joins, semijoins, antijoins,
+              natural joins + corresponding tests
 
 B:  Simple Planner
 ------------------
@@ -87,6 +90,30 @@ B4.  Describe how you implemented support for grouping and aggregation.
 B5.  Describe how you implemented support for natural joins, and joins with
      a USING clause.  Focus on how you handle challenging cases, such as
      t1(a, b) NATURAL JOIN t2(a, c) NATURAL JOIN t3(a, d).
+
+     NATURAL joins and joins with a USING clause carry an additional
+     ProjectNode on top of the NestedLoopJoinNode that eliminates duplicate
+     columns. To deal with ambiguity cases, the Project operation keeps table
+     names for all nested joins except the last. For example, on a join like
+
+        t1(a, b) NATURAL JOIN t2(a, c) NATURAL JOIN t3(a, d)
+
+     the calculated plan is:
+
+        Explain Plan:
+            Project[values:  [T1.A AS A, T1.B, T2.C, T3.D]] cost is unknown
+                NestedLoop[pred:  T1.A == T3.A] cost is unknown
+                    Project[values:  [T1.A, T1.B, T2.C]] cost is unknown
+                        NestedLoop[pred:  T1.A == T2.A] cost is unknown
+                            FileScan[table:  T1] cost is unknown
+                            FileScan[table:  T2] cost is unknown
+                    FileScan[table:  T3] cost is unknown
+
+     The nested join Projects onto [T1.A, T1.B, T2.C] instead of [A, T1.B, T2.C]
+     which eliminates ambiguity. The join is also on "T1.A == T3.A" instead of
+     "A == T3.A". The final project aliases T1.A AS A, removing the table name
+     in the final output.
+
 
 C:  Nested-Loop Join
 --------------------
@@ -167,7 +194,8 @@ D1:  Implemented unit tests for NATURAL and USING joins
        TestNaturalJoins.java
        TestUsingJoins.java
 
-     The test cases cover multiple column joins and deduplication.
+     The test cases cover multiple column joins and deduplication. They were
+     written before Donnie pushed more tests for these joins...
 
 E:  Feedback [OPTIONAL]
 -----------------------
