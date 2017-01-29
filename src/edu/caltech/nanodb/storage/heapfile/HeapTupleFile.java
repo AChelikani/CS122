@@ -546,9 +546,8 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         // Subtract one for header page
         int pagesCount = dbFile.getNumPages() - 1;
         int columns = schema.numColumns();
-        ArrayList<ColumnStatsCollector> cols = new ArrayList<ColumnStatsCollector>(columns);
-        ArrayList<ColumnStats> columnStats = new ArrayList<ColumnStats>(columns);
-
+        ArrayList<ColumnStatsCollector> cols = new ArrayList<>(columns);
+        ArrayList<ColumnStats> columnStats = new ArrayList<>(columns);
 
         // Create ColumnStatsCollectors for each column
         for(int i = 0; i < columns; i ++) {
@@ -564,17 +563,19 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             for (int j = 0; j < slots; j ++) {
                 int offset = DataPage.getSlotValue(page, j);
                 // If not null (i.e. tuple exists)
-                if (offset != 0) {
+                if (offset != DataPage.EMPTY_SLOT) {
                     tuplesCount += 1;
                     HeapFilePageTuple tup = new HeapFilePageTuple(schema, page, j, offset);
                     // Loop through columns
                     for (int k = 0; k < columns; k ++) {
                         cols.get(k).addValue(tup.getColumnValue(k));
                     }
+                    tup.unpin();
                 }
             }
             // Find difference between start and end of tuple positions on page
             tuplesSize += DataPage.getTupleDataEnd(page) - DataPage.getTupleDataStart(page);
+            page.unpin();
         }
 
         float avgSize = (float) tuplesSize / tuplesCount;
