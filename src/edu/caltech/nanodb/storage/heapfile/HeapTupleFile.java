@@ -10,9 +10,13 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
+import edu.caltech.nanodb.queryeval.ColumnStats;
+import edu.caltech.nanodb.queryeval.ColumnStatsCollector;
+
 import edu.caltech.nanodb.queryeval.TableStats;
 import edu.caltech.nanodb.relations.TableSchema;
 import edu.caltech.nanodb.relations.Tuple;
+import edu.caltech.nanodb.relations.SQLDataType;
 
 import edu.caltech.nanodb.storage.DBFile;
 import edu.caltech.nanodb.storage.DBPage;
@@ -537,8 +541,48 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
     @Override
     public void analyze() throws IOException {
-        // TODO:  Complete this implementation.
-        throw new UnsupportedOperationException("Not yet implemented!");
+        int tuplesCount = 0;
+        int tuplesSize = 0;
+        // Subtract one for header page
+        int pagesCount = dbFile.getNumPages() - 1;
+        int columns = schema.numColumns();
+        ArrayList<ColumnStatsCollector> cols = new ArrayList<ColumnStatsCollector>(columns);
+        ArrayList<ColumnStats> columnStats = new ArrayList<ColumnStats>(columns);
+
+
+        // Create ColumnStatsCollectors for each column
+        for(int i = 0; i < columns; i ++) {
+            SQLDataType colSQLType = schema.getColumnInfo(i).getType().getBaseType();
+            cols.add(new ColumnStatsCollector(colSQLType));
+        }
+
+        // Loop through pages
+        for (int i = 1; i <= pagesCount; i ++) {
+            DBPage page = storageManager.loadDBPage(dbFile, i);
+            int slots = DataPage.getNumSlots(page);
+            // Loop through tuple slots
+            for (int j = 0; j < slots; j ++) {
+                int offset = DataPage.getSlotValue(page, j);
+                // If not null (i.e. tuple exists)
+                if (offset != 0) {
+                    tuplesCount += 1;
+                    HeapFilePageTuple tup = new HeapFilePageTuple(schema, page, j, offset);
+                    // Loop through columns
+                    for (int k = 0; k < columns; k ++) {
+                        cols.get(k).addValue(tup.getColumnValue(k));
+                    }
+                }
+            }
+            // Find difference between start and end of tuple positions on page
+            tuplesSize += DataPage.getTupleDataEnd(page) - DataPage.getTupleDataStart(page);
+        }
+
+        float avgSize = (float) tuplesSize / tuplesCount;
+        for (int i = 0; i < cols.size(); i ++) {
+            columnStats.add(cols.get(i).getColumnStats());
+        }
+        stats = new TableStats(pagesCount, tuplesCount, avgSize, columnStats);
+        heapFileManager.saveMetadata(this);
     }
 
 
