@@ -2,18 +2,16 @@ package edu.caltech.nanodb.plannodes;
 
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.List;
 
-import edu.caltech.nanodb.expressions.TupleLiteral;
+import edu.caltech.nanodb.expressions.*;
+import edu.caltech.nanodb.relations.*;
 import org.apache.log4j.Logger;
 
-import edu.caltech.nanodb.expressions.Expression;
-import edu.caltech.nanodb.expressions.OrderByExpression;
 import edu.caltech.nanodb.queryeval.ColumnStats;
 import edu.caltech.nanodb.queryeval.PlanCost;
 import edu.caltech.nanodb.queryeval.SelectivityEstimator;
-import edu.caltech.nanodb.relations.JoinType;
-import edu.caltech.nanodb.relations.Tuple;
 
 import java.util.ArrayList;
 
@@ -167,7 +165,45 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         // Use the parent class' helper-function to prepare the schema.
         prepareSchemaStats();
 
-        cost = null;
+        // Compute the cost
+        PlanCost leftChildCost = leftChild.getCost();
+        PlanCost rightChildCost = rightChild.getCost();
+        float leftNumTuples = leftChildCost.numTuples;
+        float rightNumTuples = rightChildCost.numTuples;
+
+        float numTuples = leftNumTuples * rightNumTuples;
+        float tupleSize = leftChildCost.tupleSize + rightChildCost.tupleSize;
+        float cpuCost = leftChildCost.cpuCost + leftChildCost.numTuples * rightChildCost.cpuCost;
+        long numBlockIOs = leftChildCost.numBlockIOs + rightChildCost.numBlockIOs;
+
+        // Factor in the selectivity of predicate for numTuples
+        if (predicate != null) {
+            numTuples *= SelectivityEstimator.estimateSelectivity(predicate, schema, stats);
+        }
+
+        // Further estimation for outer joins, semi-joins, and anti-joins
+        switch (joinType) {
+            case LEFT_OUTER:
+                numTuples += leftNumTuples;
+                break;
+            case RIGHT_OUTER:
+                numTuples += rightNumTuples;
+                break;
+            case FULL_OUTER:
+                numTuples += leftNumTuples + rightNumTuples;
+                break;
+            case SEMIJOIN:
+            case ANTIJOIN:
+                // Upper bound number of tuples for semi-joins and anti-joins is
+                // the number of tuples in the left child.
+                numTuples = leftNumTuples;
+                tupleSize = leftChildCost.tupleSize;
+                break;
+            default:
+                break;
+        }
+
+        cost = new PlanCost(numTuples, tupleSize, cpuCost, numBlockIOs);
 
         // TODO:  Implement the rest [not sure what else is needed]
         rightNullPaddedTuple = new TupleLiteral(rightSchema.numColumns());
