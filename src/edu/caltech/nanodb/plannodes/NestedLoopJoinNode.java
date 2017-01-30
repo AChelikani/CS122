@@ -2,16 +2,20 @@ package edu.caltech.nanodb.plannodes;
 
 
 import java.io.IOException;
-import java.lang.reflect.Array;
+
 import java.util.List;
 
-import edu.caltech.nanodb.expressions.*;
-import edu.caltech.nanodb.relations.*;
+import edu.caltech.nanodb.expressions.TupleLiteral;
+
 import org.apache.log4j.Logger;
 
+import edu.caltech.nanodb.expressions.Expression;
+import edu.caltech.nanodb.expressions.OrderByExpression;
 import edu.caltech.nanodb.queryeval.ColumnStats;
 import edu.caltech.nanodb.queryeval.PlanCost;
 import edu.caltech.nanodb.queryeval.SelectivityEstimator;
+import edu.caltech.nanodb.relations.JoinType;
+import edu.caltech.nanodb.relations.Tuple;
 
 import java.util.ArrayList;
 
