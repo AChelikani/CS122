@@ -163,7 +163,6 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         // RIGHT OUTER JOIN is the same as LEFT OUTER JOIN but swapped.
         if (joinType == JoinType.RIGHT_OUTER) {
             swap();
-            joinType = JoinType.LEFT_OUTER;
         }
 
         // Use the parent class' helper-function to prepare the schema.
@@ -188,12 +187,10 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         // Further estimation for outer joins, semi-joins, and anti-joins
         switch (joinType) {
             case LEFT_OUTER:
+            case RIGHT_OUTER:    // Covers case RIGHT_OUTER too (swapped above)
                 numTuples += leftNumTuples;
                 break;
-            case RIGHT_OUTER:
-                numTuples += rightNumTuples;
-                break;
-            case FULL_OUTER:
+            case FULL_OUTER:    // Technically not supported
                 numTuples += leftNumTuples + rightNumTuples;
                 break;
             case SEMIJOIN:
@@ -255,6 +252,13 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
             // means it matched previously). If it is *not* the leftTuple we
             // started on, then we can return it (padded with null) because
             // we traversed the entire right stream without a match.
+            //
+            // RIGHT_OUTER is also included here. The children must have been
+            // swapped in prepare() in order for this to work correctly.
+            case RIGHT_OUTER: {
+                assert isSwapped();
+                // Fall through
+            }
             case LEFT_OUTER: {
                 Tuple prevLeftTuple = leftTuple;
                 while (getTuplesToJoin()) {
