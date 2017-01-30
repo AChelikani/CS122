@@ -12,6 +12,3 @@ build
 
 # Misc text files
 out.txt
-
-# Require explicit modification for logging.conf due to WARN/DEBUG
-logging.conf
