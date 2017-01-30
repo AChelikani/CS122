@@ -145,19 +145,33 @@ public class SelectivityEstimator {
     public static float estimateBoolOperSelectivity(BooleanOperator bool,
         Schema exprSchema, ArrayList<ColumnStats> stats) {
 
-        float selectivity = 1.0f;
+        float selectivity = DEFAULT_SELECTIVITY;
 
         switch (bool.getType()) {
         case AND_EXPR:
-            // TODO:  Compute selectivity of AND expression.
+            // Assume independence and just multiply selectivities together
+            selectivity = 1.0f;
+            for (int i = 0; i < bool.getNumTerms(); i++) {
+                Expression expr = bool.getTerm(i);
+                selectivity *= estimateSelectivity(expr, exprSchema, stats);
+            }
             break;
 
         case OR_EXPR:
-            // TODO:  Compute selectivity of OR expression.
+            // Assume independence, multiply inverse selectivities together
+            float invSelectvitiy = 1.0f;
+            for (int i = 0; i < bool.getNumTerms(); i++) {
+                Expression expr = bool.getTerm(i);
+                invSelectvitiy *= 1.0f - estimateSelectivity(expr, exprSchema, stats);
+            }
+            selectivity = 1.0f - invSelectvitiy;
             break;
 
         case NOT_EXPR:
-            // TODO:  Compute selectivity of NOT expression.
+            // NOT expression has exactly one term.
+            assert bool.getNumTerms() == 1;
+            Expression expr = bool.getTerm(0);
+            selectivity = 1.0f - estimateSelectivity(expr, exprSchema, stats);
             break;
 
         default:
@@ -270,10 +284,25 @@ public class SelectivityEstimator {
             // Compute the equality value.  Then, if inequality, invert the
             // result.
 
-            // TODO:  Compute the selectivity.  Note that the ColumnStats type
+            // DONE:  Compute the selectivity.  Note that the ColumnStats type
             //        will return special values to indicate "unknown" stats;
             //        your code should detect when this is the case, and fall
             //        back on the default selectivity.
+
+            // Approximate as uniform distribution. Then, selectivity on
+            // equality is simply 1 / numUnique.
+            int numUnique = colStats.getNumUniqueValues();
+            if (numUnique == 0) {
+                selectivity = 0.0f;
+            }
+            else if (numUnique > 0) {
+                selectivity = 1.0f / numUnique;
+
+                // Invert for NOT_EQUALS.
+                if (compType == CompareOperator.Type.NOT_EQUALS) {
+                    selectivity = 1.0f - selectivity;
+                }
+            }
 
             break;
 
@@ -288,9 +317,19 @@ public class SelectivityEstimator {
             if (typeSupportsCompareEstimates(sqlType) &&
                 colStats.hasDifferentMinMaxValues()) {
 
-                // TODO:  Compute the selectivity.  The if-condition ensures
+                // DONE:  Compute the selectivity.  The if-condition ensures
                 //        that you will only compute selectivities if the type
                 //        supports it, and if there are valid stats.
+
+                // Range to calculate is (max - v) / (max - min)
+                Object maxValue = colStats.getMaxValue();
+                Object minValue = colStats.getMinValue();
+                selectivity = computeRatio(value, maxValue, minValue, maxValue);
+
+                // Invert for LESS_THAN.
+                if (compType == CompareOperator.Type.LESS_THAN) {
+                    selectivity = 1.0f - selectivity;
+                }
             }
 
             break;
@@ -306,8 +345,18 @@ public class SelectivityEstimator {
             if (typeSupportsCompareEstimates(sqlType) &&
                 colStats.hasDifferentMinMaxValues()) {
 
-                // TODO:  Compute the selectivity.  Watch out for copy-paste
+                // DONE:  Compute the selectivity.  Watch out for copy-paste
                 //        bugs...
+
+                // Range to calculate is (v - min) / (max - min)
+                Object maxValue = colStats.getMaxValue();
+                Object minValue = colStats.getMinValue();
+                selectivity = computeRatio(minValue, value, minValue, maxValue);
+
+                // Invert for GREATER_THAN.
+                if (compType == CompareOperator.Type.GREATER_THAN) {
+                    selectivity = 1.0f - selectivity;
+                }
             }
 
             break;
@@ -355,10 +404,38 @@ public class SelectivityEstimator {
         ColumnStats colOneStats = stats.get(colOneIndex);
         ColumnStats colTwoStats = stats.get(colTwoIndex);
 
-        // TODO:  Compute the selectivity.  Note that the ColumnStats type
+        // DONE:  Compute the selectivity.  Note that the ColumnStats type
         //        will return special values to indicate "unknown" stats;
         //        your code should detect when this is the case, and fall
         //        back on the default selectivity.
+
+        switch (compType) {
+            case EQUALS:
+            case NOT_EQUALS:
+                // Assuming uniform distribution, take maximum of probabilities.
+                int colOneUnique = colOneStats.getNumUniqueValues();
+                int colTwoUnique = colTwoStats.getNumUniqueValues();
+
+                if (colOneUnique == 0 || colTwoUnique == 0) {
+                    selectivity = 0.0f;
+                }
+                else if (colOneUnique > 0 && colTwoUnique > 0) {
+                    selectivity = Float.max(1.0f / colOneUnique,
+                                            1.0f / colTwoUnique);
+
+                    // Invert for NOT_EQUALS.
+                    if (compType == CompareOperator.Type.NOT_EQUALS) {
+                        selectivity = 1.0f - selectivity;
+                    }
+                }
+
+                break;
+
+            default:
+                // Others are unimplemented...
+                throw new UnsupportedOperationException(
+                        "Unsupported column-column comparison: " + compType);
+        }
 
         return selectivity;
     }
