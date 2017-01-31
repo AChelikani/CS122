@@ -229,8 +229,11 @@ public class FileScanNode extends SelectNode {
 
         // Compute cost
         float numTuples = tableStats.numTuples;
+        if (this.predicate != null) {
+            numTuples *= SelectivityEstimator.estimateSelectivity(predicate, schema, fileStats);
+        }
         float tupleSize = tableStats.avgTupleSize;
-        float cpuCost = numTuples;
+        float cpuCost = tableStats.numTuples;
         long numBlockIOS = tableStats.numDataPages;
         cost = new PlanCost(numTuples, tupleSize, cpuCost, numBlockIOS);
 

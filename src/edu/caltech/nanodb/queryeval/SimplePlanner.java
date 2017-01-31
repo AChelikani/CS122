@@ -64,19 +64,24 @@ public class SimplePlanner extends AbstractPlannerImpl {
         }
 
         FromClause fromClause = selClause.getFromClause();
+        Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
 
         // Process FROM clause
         if (fromClause == null) {
             logger.debug("No from clause");
             plan = new ProjectNode(selClause.getSelectValues());
+        } else if (fromClause.isBaseTable()) {
+            logger.debug("Using SimpleSelect: " + fromClause.toString());
+            plan = makeSimpleSelect(fromClause.getTableName(),
+                    whereExpr, null);
+            whereExpr = null;   // Set to null to avoid double filtering
         } else {
             logger.debug("From clause: " + fromClause.toString());
             plan = processFromClause(fromClause, true);
         }
 
         // Process WHERE clause
-        Expression whereExpr = selClause.getWhereExpr();
         if (whereExpr != null) {
             logger.debug("Where clause: " + whereExpr.toString());
             // Check that WHERE clause does not contain aggregate functions
@@ -309,7 +314,6 @@ public class SimplePlanner extends AbstractPlannerImpl {
         // Make a SelectNode to read rows from the table, with the specified
         // predicate.
         SelectNode selectNode = new FileScanNode(tableInfo, predicate);
-        selectNode.prepare();
         return selectNode;
     }
 }

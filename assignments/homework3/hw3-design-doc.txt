@@ -6,24 +6,30 @@ A:  Logistics
 
 A1.  List your team name and the people who worked on this assignment.
 
-     <team name>
+     sqLIT
 
-     <name>
-     <name>
-     ...
+     Advith Chelikani
+     Joon Lee
+     Charlie Tong
 
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
 
-     Repository URL:  <url>
+     Repository URL:  https://github.com/AChelikani/CS122
      Tag name:        <tag>
      Commit hash:     <hash>
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
+     None
+
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith:   
+    Joon:     
+    Charlie:  Selectivity estimation
 
 B:  Statistics Collection
 -------------------------
@@ -50,54 +56,133 @@ have analyzed all of the tables in that schema.
 D1.  Paste the output of running:  EXPLAIN SELECT * FROM cities;
      Do not include debug lines, just the output of the command itself.
 
+       Explain Plan:
+           FileScan[table:  CITIES] cost=[tuples=254.0, tupSize=23.8, cpuCost=254.0, blockIOs=1]
+
+       Estimated 254.000000 tuples with average size 23.787401
+       Estimated number of block IOs:  1
+
 D2.  What is the estimated number of tuples that will be produced by each
      of these queries:
 
      SELECT * FROM cities WHERE population > 1000000;
 
-     <paste output here>
+       Estimated 225.582245 tuples with average size 23.787401
 
      SELECT * FROM cities WHERE population > 5000000;
 
-     <paste output here>
+       Estimated 99.262199 tuples with average size 23.787401
 
      SELECT * FROM cities WHERE population > 8000000;
 
-     <paste output here>
+       Estimated 4.522162 tuples with average size 23.787401
 
      How many tuples does each query produce?
+
+       9, 1, 1 respectively
 
      Briefly explain the difference between the estimated number of tuples
      and the actual number of tuples for these queries.
 
+       The estimator assumes a uniform distribution of populations between min
+       and max but the actual populations are much more right-skewed (more low
+       population cities than high population cities). Also the populations span
+       two orders of magnitude. Thus, there is a large overestimate.
+
 D3.  Paste the output of running these commands:
 
-     EXPLAIN SELECT store_id FROM stores, cities     WHERE stores.city_id = cities.city_id AND
+     EXPLAIN SELECT store_id FROM stores, cities
+     WHERE stores.city_id = cities.city_id AND
            cities.population > 1000000;
 
-     <paste output here>
+       Explain Plan:
+           Project[values:  [STORES.STORE_ID]] cost=[tuples=1776.2, tupSize=36.8, cpuCost=1019776.3, blockIOs=5]
+               SimpleFilter[pred:  STORES.CITY_ID == CITIES.CITY_ID AND CITIES.POPULATION > 1000000] cost=[tuples=1776.2, tupSize=36.8, cpuCost=1018000.0, blockIOs=5]
+                   NestedLoop[no pred] cost=[tuples=508000.0, tupSize=36.8, cpuCost=510000.0, blockIOs=5]
+                       FileScan[table:  STORES] cost=[tuples=2000.0, tupSize=13.0, cpuCost=2000.0, blockIOs=4]
+                       FileScan[table:  CITIES] cost=[tuples=254.0, tupSize=23.8, cpuCost=254.0, blockIOs=1]
 
-     EXPLAIN SELECT store_id FROM stores JOIN                    (SELECT city_id FROM cities                     WHERE population > 1000000) AS big_cities                    ON stores.city_id = big_cities.city_id;
+       Estimated 1776.238159 tuples with average size 36.787399
+       Estimated number of block IOs:  5
 
-     <paste output here>
+     EXPLAIN SELECT store_id FROM stores JOIN
+               (SELECT city_id FROM cities
+                WHERE population > 1000000) AS big_cities
+               ON stores.city_id = big_cities.city_id;
+
+       Explain Plan:
+           Project[values:  [STORES.STORE_ID]] cost=[tuples=1776.2, tupSize=36.8, cpuCost=962940.8, blockIOs=5]
+               NestedLoop[pred:  STORES.CITY_ID == BIG_CITIES.CITY_ID] cost=[tuples=1776.2, tupSize=36.8, cpuCost=961164.5, blockIOs=5]
+                   FileScan[table:  STORES] cost=[tuples=2000.0, tupSize=13.0, cpuCost=2000.0, blockIOs=4]
+                   Rename[resultTableName=BIG_CITIES] cost=[tuples=225.6, tupSize=23.8, cpuCost=479.6, blockIOs=1]
+                       Project[values:  [CITIES.CITY_ID]] cost=[tuples=225.6, tupSize=23.8, cpuCost=479.6, blockIOs=1]
+                           FileScan[table:  CITIES, pred:  CITIES.POPULATION > 1000000] cost=[tuples=225.6, tupSize=23.8, cpuCost=254.0, blockIOs=1]
+
+       Estimated 1776.238159 tuples with average size 36.787399
+       Estimated number of block IOs:  5
 
      The estimated number of tuples produced should be the same, but the
      costs should be different.  Explain why.
 
+       The cost is lower for the second query because the city population filter
+       is applied as part of the FileScan which lowers CPU cost. This results in
+       fewer tuples joined. The first query joins the full tables and then
+       filters, which is more expensive.
+
 D4.  The assignment gives this example "slow" query:
 
-     SELECT store_id, property_costs     FROM stores, cities, states     WHERE stores.city_id = cities.city_id AND
-           cities.state_id = states.state_id AND           state_name = 'Oregon' AND property_costs > 500000;
+     SELECT store_id, property_costs
+     FROM stores, cities, states
+     WHERE stores.city_id = cities.city_id AND
+           cities.state_id = states.state_id AND
+           state_name = 'Oregon' AND property_costs > 500000;
 
      How long does this query take to run, in seconds?
 
+       57.104 seconds
+
      Include the EXPLAIN output for the above query here.
 
-     <paste output here>
+       Explain Plan:
+           Project[values:  [STORES.STORE_ID, STORES.PROPERTY_COSTS]] cost=[tuples=22.7, tupSize=52.5, cpuCost=52326024.0, blockIOs=6]
+               SimpleFilter[pred:  STORES.CITY_ID == CITIES.CITY_ID AND CITIES.STATE_ID == STATES.STATE_ID AND STATES.STATE_NAME == 'Oregon' AND STORES.PROPERTY_COSTS > 500000] cost=[tuples=22.7, tupSize=52.5, cpuCost=52326000.0, blockIOs=6]
+                   NestedLoop[no pred] cost=[tuples=25908000.0, tupSize=52.5, cpuCost=26418000.0, blockIOs=6]
+                       NestedLoop[no pred] cost=[tuples=508000.0, tupSize=36.8, cpuCost=510000.0, blockIOs=5]
+                           FileScan[table:  STORES] cost=[tuples=2000.0, tupSize=13.0, cpuCost=2000.0, blockIOs=4]
+                           FileScan[table:  CITIES] cost=[tuples=254.0, tupSize=23.8, cpuCost=254.0, blockIOs=1]
+                       FileScan[table:  STATES] cost=[tuples=51.0, tupSize=15.7, cpuCost=51.0, blockIOs=1]
+
+       Estimated 22.704525 tuples with average size 52.454067
+       Estimated number of block IOs:  6
 
      How would you rewrite this query (e.g. using ON clauses, subqueries
      in the FROM clause, etc.) to be as optimal as possible?  Also include
      the result of EXPLAINing your query.
+
+       SELECT store_id, property_costs FROM
+       (SELECT * FROM states WHERE state_name = 'Oregon') t1
+         NATURAL JOIN
+       cities
+         NATURAL JOIN
+       (SELECT * FROM stores WHERE property_costs > 500000) t3;
+
+       Above query runs in 0.145 seconds.
+
+       Explain Plan:
+           Project[values:  [T3.STORE_ID, T3.PROPERTY_COSTS]] cost=[tuples=22.7, tupSize=52.5, cpuCost=11901.6, blockIOs=6]
+               Project[values:  [CITIES.CITY_ID AS CITY_ID, T1.STATE_ID, T1.STATE_NAME, CITIES.CITY_NAME, CITIES.POPULATION, T3.STORE_ID, T3.PROPERTY_COSTS]] cost=[tuples=22.7, tupSize=52.5, cpuCost=11878.9, blockIOs=6]
+                   NestedLoop[pred:  CITIES.CITY_ID == T3.CITY_ID] cost=[tuples=22.7, tupSize=52.5, cpuCost=11856.2, blockIOs=6]
+                       Project[values:  [T1.STATE_ID, T1.STATE_NAME, CITIES.CITY_ID, CITIES.CITY_NAME, CITIES.POPULATION]] cost=[tuples=5.8, tupSize=39.5, cpuCost=310.8, blockIOs=2]
+                           NestedLoop[pred:  T1.STATE_ID == CITIES.STATE_ID] cost=[tuples=5.8, tupSize=39.5, cpuCost=305.0, blockIOs=2]
+                               Rename[resultTableName=T1] cost=[tuples=1.0, tupSize=15.7, cpuCost=51.0, blockIOs=1]
+                                   FileScan[table:  STATES, pred:  STATES.STATE_NAME == 'Oregon'] cost=[tuples=1.0, tupSize=15.7, cpuCost=51.0, blockIOs=1]
+                               FileScan[table:  CITIES] cost=[tuples=254.0, tupSize=23.8, cpuCost=254.0, blockIOs=1]
+                       Rename[resultTableName=T3] cost=[tuples=999.0, tupSize=13.0, cpuCost=2000.0, blockIOs=4]
+                           FileScan[table:  STORES, pred:  STORES.PROPERTY_COSTS > 500000] cost=[tuples=999.0, tupSize=13.0, cpuCost=2000.0, blockIOs=4]
+
+       Estimated 22.704525 tuples with average size 52.454067
+       Estimated number of block IOs:  6
+
 
 E:  Extra Credit [OPTIONAL]
 ---------------------------
