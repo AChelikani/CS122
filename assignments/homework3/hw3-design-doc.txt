@@ -27,7 +27,7 @@ A3.  Specify any late tokens you are applying to this assignment, or
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith:   
+    Advith: Table statistics collection
     Joon: Plan Costing
     Charlie:  Selectivity estimation
 
@@ -36,6 +36,21 @@ B:  Statistics Collection
 
 B1.  Using pseudocode, summarize the implementation of your HeapTupleFile
      analyze() function.
+
+     for column in columns:
+        create stat collector object for each column
+     for page in pages:
+        increment tupleSize using starting and ending pos of tuples on page
+        for tuple in tuples:
+            if tuple != empty:
+                increment tupleCount
+            for column in columns:
+                add to stat collector for this column
+    compute avgSize
+    get columnStats from each stat collector object
+    save in stats instance variable
+    call saveMetadata
+
 
 C:  Plan Costing Implementation
 -------------------------------
@@ -258,4 +273,3 @@ F4.  Did you particularly enjoy any parts of the assignment?  Were there
 
 F5.  Do you have any suggestions for how future versions of the
      assignment can be improved?
-
