@@ -28,7 +28,7 @@ A3.  Specify any late tokens you are applying to this assignment, or
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
     Advith:   
-    Joon:     
+    Joon: Plan Costing
     Charlie:  Selectivity estimation
 
 B:  Statistics Collection
@@ -43,9 +43,43 @@ C:  Plan Costing Implementation
 C1.  Briefly describe how you estimate the number of tuples and the cost
      of a file-scan plan node.  What factors does your cost include?
 
+     The number of tuples was estimated as the number of tuples recorded
+     in the table statistics. If there was a predicate, then this value
+     was multiplied by the selectivity of the predicate to estimate how
+     many tuples would satisfy the predicate. The CPU cost was estimated
+     to be equal to the number of tuples in the table, regardless of the
+     existence of a predicate, since the node would have to scan all
+     of the tuples either way.
+
 C2.  Same question as for C1, but for simple filter nodes.
 
+     The number of tuples was estimated as the number of tuples of the
+     child node, multiplied by the selectivity of the predicate. This
+     estimates how many tuples would satisfy the predicate. The CPU
+     cost was estimated to be the child node's CPU cost plus the number
+     of tuples from the child, since the simple filter node would have
+     to process all of those tuples once.
+
 C3.  Same question as for C1, but for nested-loop joins.
+
+     First, the number of tuples was estimated to be the number of
+     tuples from the left child multiplied by the number of tuples
+     from the right child, which corresponds to a cross join. If
+     there was a predicate, this value was multiplied by the
+     selectivity of the predicate as estimated by SelectivityEstimator.
+     For left outer joins and right outer joins (which is swapped
+     beforehand into a left outer join), the value was augmented by
+     the number of tuples in the left child since all of the tuples
+     in the left child should be included in the output. Similarly,
+     for full outer joins, the value was augmented by the number
+     of tuples from both children. Finally, for semi-joins and
+     anti-joins, the number of tuples was estimated to be the
+     number of tuples in the left child, which is the upper
+     bound for the actual number of tuples. The CPU cost was
+     estimated to be the (cost of left child) + (# tuples in left child)
+     * (cost of right child), since the tuples in the left child would
+     be read once, and the tuples in the right child would be read once
+     for each tuple in the left child.
 
 D:  Costing SQL Queries
 -----------------------
