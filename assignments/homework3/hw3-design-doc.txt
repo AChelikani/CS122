@@ -17,8 +17,8 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      of your repository tags with this command:  git show-ref --tags)
 
      Repository URL:  https://github.com/AChelikani/CS122
-     Tag name:        <tag>
-     Commit hash:     <hash>
+     Tag name:        hw3
+     Commit hash:     20c9acd49c67013dcf79387aef40ffcbc12e23f8
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
