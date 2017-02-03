@@ -235,7 +235,7 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         // Can model off of processFromClause in SimplePlanner
         ClauseType ct = fromClause.getClauseType();
         if (ct == ClauseType.BASE_TABLE) {
-            // Pass
+            leafFromClauses.add(fromClause)
         } else if (ct == ClauseType.SELECT_SUBQUERY) {
             leafFromClauses.add(fromClause);
         } else if (ct == ClauseType.JOIN_EXPR) {
