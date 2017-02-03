@@ -18,6 +18,7 @@ import edu.caltech.nanodb.plannodes.FileScanNode;
 import edu.caltech.nanodb.plannodes.PlanNode;
 import edu.caltech.nanodb.plannodes.SelectNode;
 import edu.caltech.nanodb.queryast.FromClause;
+import edu.caltech.nanodb.queryast.FromClause.ClauseType;
 import edu.caltech.nanodb.queryast.SelectClause;
 import edu.caltech.nanodb.relations.TableInfo;
 
@@ -217,7 +218,9 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
      * This helper method pulls the essential details for join optimization
      * out of a <tt>FROM</tt> clause.
      *
-     * TODO:  FILL IN DETAILS.
+     * Checks from clause for a base table, select subquery, or join expressions
+     * and adds the from clauses to the list of leaves and the conjuncts to the
+     * list of conjuncts.
      *
      * @param fromClause the from-clause to collect details from
      *
@@ -226,9 +229,32 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
      * @param leafFromClauses the collection to add all leaf from-clauses to
      */
     private void collectDetails(FromClause fromClause,
-        HashSet<Expression> conjuncts, ArrayList<FromClause> leafFromClauses) {
+        HashSet<Expression> conjuncts, ArrayList<FromClause> leafFromClauses) throws IOException {
+        // Needs to handle base table, subqueries, joins
+        // Collect leafs and conjuncts
+        // Can model off of processFromClause in SimplePlanner
+        ClauseType ct = fromClause.getClauseType();
+        if (ct == ClauseType.BASE_TABLE) {
+            // Pass
+        } else if (ct == ClauseType.SELECT_SUBQUERY) {
+            leafFromClauses.add(fromClause);
+        } else if (ct == ClauseType.JOIN_EXPR) {
+            // Recurse on left and right child
+            // Keep outer joins as leaves
+            if (fromClause.isOuterJoin()) {
+                leafFromClauses.add(fromClause);
+            } else {
+                // Get conjuncts from the join expression
+                PredicateUtils.collectConjuncts(fromClause.getComputedJoinExpr(), conjuncts);
+                // Recurse on children of join
+                collectDetails(fromClause.getLeftChild(), conjuncts, leafFromClauses);
+                collectDetails(fromClause.getRightChild(), conjuncts, leafFromClauses);
+            }
 
-        // TODO:  IMPLEMENT
+        } else {
+            throw new UnsupportedOperationException("Invalid FROM clause");
+        }
+
     }
 
 
