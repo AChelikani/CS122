@@ -12,12 +12,10 @@ import java.util.List;
 import java.util.Set;
 
 import edu.caltech.nanodb.expressions.PredicateUtils;
+import edu.caltech.nanodb.plannodes.*;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.expressions.Expression;
-import edu.caltech.nanodb.plannodes.FileScanNode;
-import edu.caltech.nanodb.plannodes.PlanNode;
-import edu.caltech.nanodb.plannodes.SelectNode;
 import edu.caltech.nanodb.queryast.FromClause;
 import edu.caltech.nanodb.queryast.SelectClause;
 import edu.caltech.nanodb.relations.TableInfo;
@@ -253,7 +251,7 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
                 }
                 break;
             default:
-                throw new UnsupportedOperationException("Invalid FROM clause");
+                throw new UnsupportedOperationException("Unsupported FROM clause");
         }
     }
 
@@ -338,7 +336,70 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         //        joins first, then focus on outer joins once you have the
         //        typical cases supported.
 
-        return null;
+        PlanNode plan = null;
+
+        switch (fromClause.getClauseType()) {
+            case BASE_TABLE:
+                // Create a FileScanNode
+                String tableName = fromClause.getTableName();
+                TableInfo tableInfo = storageManager.getTableManager().openTable(tableName);
+                plan = new FileScanNode(tableInfo, null);
+                break;
+            case SELECT_SUBQUERY:
+                // Recursively get the plan node for the subquery
+                plan = makePlan(fromClause.getSelectClause(), null);
+                break;
+            case JOIN_EXPR:
+                if (!fromClause.isOuterJoin()) {
+                    throw new IllegalArgumentException("Specified FROM clause is a join" +
+                            "expression that isn't an outer join");
+                }
+                // Compute child join components for outer joins
+                JoinComponent leftComponent;
+                JoinComponent rightComponent;
+
+                // Pass down conjuncts if the opposite child is not the "outer" side
+                leftComponent = makeJoinPlan(fromClause.getLeftChild(),
+                        fromClause.hasOuterJoinOnRight() ? null : conjuncts);
+                rightComponent = makeJoinPlan(fromClause.getRightChild(),
+                        fromClause.hasOuterJoinOnLeft() ? null : conjuncts);
+                leafConjuncts.addAll(leftComponent.conjunctsUsed);
+                leafConjuncts.addAll(rightComponent.conjunctsUsed);
+
+                // Outer join the two children
+                plan = new NestedLoopJoinNode(leftComponent.joinPlan, rightComponent.joinPlan,
+                        fromClause.getJoinType(), null);
+                break;
+            default:
+                throw new IllegalArgumentException("Unrecognized FROM clause type");
+        }
+
+        // TODO: Does this need to be called if conjuncts is empty
+        // (Should prepare be called at least once for every function call)
+
+        // Prepare plan to set its schema
+        plan.prepare();
+
+        // Compute conjuncts that can be applied to the plan and create a new predicate
+        HashSet<Expression> applicableConjuncts = new HashSet<>();
+        PredicateUtils.findExprsUsingSchemas(conjuncts, false,
+                applicableConjuncts, plan.getSchema());
+
+        // Apply conjuncts to plan as a predicate
+        Expression predicate = PredicateUtils.makePredicate(applicableConjuncts);
+        if (predicate != null) {
+            PlanUtils.addPredicateToPlan(plan, predicate);
+            leafConjuncts.addAll(applicableConjuncts);
+            // Update the plan's cost and statistics after adding predicate
+            plan.prepare();
+        }
+
+        // Apply alias if necessary
+        if (fromClause.isRenamed()) {
+            plan = new RenameNode(plan, fromClause.getResultName());
+        }
+
+        return plan;
     }
 
 
