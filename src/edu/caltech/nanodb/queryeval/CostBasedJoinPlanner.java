@@ -380,9 +380,14 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         // Prepare plan to set its schema
         plan.prepare();
 
+        // Get conjuncts that have not been used yet. Conjuncts may
+        // only have been used if this is an outer join.
+        HashSet<Expression> unusedConjuncts = new HashSet<>(conjuncts);
+        unusedConjuncts.removeAll(leafConjuncts);
+
         // Compute conjuncts that can be applied to the plan and create a new predicate
         HashSet<Expression> applicableConjuncts = new HashSet<>();
-        PredicateUtils.findExprsUsingSchemas(conjuncts, false,
+        PredicateUtils.findExprsUsingSchemas(unusedConjuncts, false,
                 applicableConjuncts, plan.getSchema());
 
         // Apply conjuncts to plan as a predicate
