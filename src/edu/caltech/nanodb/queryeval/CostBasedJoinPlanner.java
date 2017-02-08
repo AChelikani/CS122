@@ -4,7 +4,9 @@ package edu.caltech.nanodb.queryeval;
 import java.io.IOException;
 
 import java.util.*;
+import java.util.function.Predicate;
 
+import edu.caltech.nanodb.expressions.OrderByExpression;
 import edu.caltech.nanodb.expressions.PredicateUtils;
 import edu.caltech.nanodb.plannodes.*;
 import edu.caltech.nanodb.relations.JoinType;
@@ -140,7 +142,79 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         // various kinds of subqueries, queries without a FROM clause, etc.,
         // can all be incorporated into this sketch relatively easily.
 
-        return null;
+        if (enclosingSelects != null && !enclosingSelects.isEmpty()) {
+            throw new UnsupportedOperationException(
+                    "Not implemented:  enclosing queries");
+        }
+
+        // 0) The Declaration of Variables
+        FromClause fromClause = selClause.getFromClause();
+        Expression whereExpr = selClause.getWhereExpr();
+        PlanNode plan;
+
+        HashSet<Expression> conjuncts = new HashSet<>();
+        ArrayList<FromClause> leafFromClauses = new ArrayList<>();
+
+
+        // 1) Pull conjuncts from WHERE and HAVING
+        if (whereExpr != null) {
+            logger.debug("Where clause: " + whereExpr.toString());
+
+            // Check that WHERE clause does not contain aggregate functions
+            if (containsAggregateFunction(whereExpr)) {
+                throw new IllegalArgumentException("Where clauses cannot contain aggregation " +
+                        "functions");
+            }
+
+            // Pull all conjuncts
+            PredicateUtils.collectConjuncts(whereExpr, conjuncts);
+        }
+
+
+        // 2) Create an optimal join plan from top-level from-clause and conjuncts
+        if (fromClause == null) {
+            logger.debug("No from clause");
+            plan = new ProjectNode(selClause.getSelectValues());
+        } else {
+            logger.debug("From clause: " + fromClause.toString());
+
+            collectDetails(fromClause, conjuncts, leafFromClauses);
+            ArrayList<JoinComponent> leaves = generateLeafJoinComponents(leafFromClauses, conjuncts);
+            JoinComponent topJC = generateOptimalJoin(leaves, conjuncts);
+
+            conjuncts.removeAll(topJC.conjunctsUsed);
+            plan = topJC.joinPlan;
+        }
+
+
+        // 3) Handle unused conjuncts
+        if (!conjuncts.isEmpty()) {
+            Expression predicate = PredicateUtils.makePredicate(conjuncts);
+            plan = new SimpleFilterNode(plan, predicate);
+        }
+
+
+        // 3.5) Grouping and Aggregation
+        // This may modify selClause to account for aggregate functions and
+        // complex expressions in GROUP BY clauses.
+        plan = processGroupAggregation(plan, selClause);
+
+
+        // 4) Project plan node
+        if (!selClause.isTrivialProject()) {
+            plan = new ProjectNode(plan, selClause.getSelectValues());
+        }
+
+
+        // 5) Handle other clauses (ORDER BY, LIMIT/OFFSET, etc.)
+        List<OrderByExpression> orderByClause = selClause.getOrderByExprs();
+        if (!orderByClause.isEmpty()) {
+            logger.debug("Order by clause: " + orderByClause);
+            plan = new SortNode(plan, orderByClause);
+        }
+
+        plan.prepare();
+        return plan;
     }
 
 
@@ -469,10 +543,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
                     if (currUsed.contains(leaf.joinPlan))
                         continue;
 
-                    // Next join plan, using INNER join
-                    PlanNode nextPlan = new NestedLoopJoinNode(
-                            currBest.joinPlan, leaf.joinPlan, JoinType.INNER, null);
-
                     // Get all conjuncts used by subplans
                     HashSet<Expression> nextConjunctsUsed = new HashSet<>(currBest.conjunctsUsed);
                     nextConjunctsUsed.addAll(leaf.conjunctsUsed);
@@ -485,10 +555,11 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
                             unusedConjuncts, false, applicableConjuncts,
                             currBest.joinPlan.getSchema(), leaf.joinPlan.getSchema());
                     Expression predicate = PredicateUtils.makePredicate(applicableConjuncts);
-                    if (!applicableConjuncts.isEmpty()) {
-                        PlanUtils.addPredicateToPlan(nextPlan, predicate);
-                        nextConjunctsUsed.addAll(applicableConjuncts);
-                    }
+                    nextConjunctsUsed.addAll(applicableConjuncts);
+
+                    // Next join plan, using INNER join
+                    PlanNode nextPlan = new NestedLoopJoinNode(
+                            currBest.joinPlan, leaf.joinPlan, JoinType.INNER, predicate);
 
                     // Next set of leaves used (KEY)
                     HashSet<PlanNode> nextUsed = new HashSet<>(currUsed);

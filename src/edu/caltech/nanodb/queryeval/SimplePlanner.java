@@ -211,69 +211,6 @@ public class SimplePlanner extends AbstractPlannerImpl {
     }
 
     /**
-     * Processes the given SelectClause for grouping and aggregation.
-     * The method will scan the <tt>GROUP BY</tt> clause for complex expressions,
-     * and scan the <tt>SELECT</tt> and <tt>HAVING</tt> clauses for aggregate functions.
-     * These expressions and functions are stored in the processor
-     * and are replaced by auto-generated names.
-     *
-     * @param plan the child node of the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
-     * @param selClause the <tt>SELECT</tt> clause to process
-     *
-     * @return the resulting plan node
-     */
-    public PlanNode processGroupAggregation(PlanNode plan, SelectClause selClause) {
-        GroupAggregationProcessor processor = new GroupAggregationProcessor();
-
-        // Scan GROUP BY clause
-        List<Expression> groupByExprs = selClause.getGroupByExprs();
-        plan = processGroupByClause(plan, groupByExprs, processor);
-
-        // Scan SELECT and HAVING clauses for aggregate functions, and rename SelectValues
-        // to account for auto-generated column names.
-        processAggregateFunctions(selClause, processor);
-        processor.renameSelectValues(selClause.getSelectValues());
-
-        Map<String, FunctionCall> aggregates = processor.getAggregateMap();
-        if (!aggregates.isEmpty() || !groupByExprs.isEmpty()) {
-            plan = new HashedGroupAggregateNode(plan, groupByExprs, aggregates);
-        }
-
-        if (selClause.getHavingExpr() != null) {
-            plan = new SimpleFilterNode(plan, selClause.getHavingExpr());
-        }
-
-        return plan;
-    }
-
-    /**
-     * Scan GROUP BY clause for complex expressions, map them to auto-generated column names
-     * in the processor, and create a {@link edu.caltech.nanodb.plannodes.ProjectNode} for
-     * these new columns.
-     *
-     * @param plan the child node of the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
-     * @param groupByExprs list of <tt>GROUP BY</tt> expressions to process
-     * @param processor processor in which the mappings are stored
-     *
-     * @return the resulting {@link edu.caltech.nanodb.plannodes.PlanNode}
-     */
-    public PlanNode processGroupByClause(PlanNode plan, List<Expression> groupByExprs,
-                                         GroupAggregationProcessor processor) {
-        if (groupByExprs != null && groupByExprs.size() > 0) {
-            // Create mappings from auto-generated names to expressions
-            List<SelectValue> groupByProjectionSpec = processor.processGroupByExprs(groupByExprs);
-            if (groupByProjectionSpec.size() > 0) {
-                // Add "*" wild card to include all other columns
-                groupByProjectionSpec.add(new SelectValue(new ColumnName(null)));
-                // Create GROUP BY columns using auto-generated names
-                plan = new ProjectNode(plan, groupByProjectionSpec);
-            }
-        }
-
-        return plan;
-    }
-
-    /**
      * Constructs a simple select plan that reads directly from a table, with
      * an optional predicate for selecting rows.
      * <p>
