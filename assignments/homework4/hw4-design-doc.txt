@@ -6,24 +6,30 @@ A:  Logistics
 
 A1.  List your team name and the people who worked on this assignment.
 
-     <team name>
+     sqLIT
 
-     <name>
-     <name>
-     ...
+     Advith Chelikani
+     Joon Lee
+     Charlie Tong
 
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
 
-     Repository URL:  <url>
+     Repository URL:  https://github.com/AChelikani/CS122
      Tag name:        <tag>
      Commit hash:     <hash>
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
+     None
+
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith: collectDetails
+    Joon:
+    Charlie:
 
 B:  Generating Optimal Joins
 ----------------------------
@@ -110,4 +116,3 @@ F4.  Did you particularly enjoy any parts of the assignment?  Were there
 
 F5.  Do you have any suggestions for how future versions of the
      assignment can be improved?
-
