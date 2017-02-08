@@ -3,16 +3,11 @@ package edu.caltech.nanodb.queryeval;
 
 import java.io.IOException;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 import edu.caltech.nanodb.expressions.PredicateUtils;
 import edu.caltech.nanodb.plannodes.*;
+import edu.caltech.nanodb.relations.JoinType;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.expressions.Expression;
@@ -392,16 +387,22 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
         // Apply conjuncts to plan as a predicate
         Expression predicate = PredicateUtils.makePredicate(applicableConjuncts);
+        boolean changed = false;
         if (predicate != null) {
             PlanUtils.addPredicateToPlan(plan, predicate);
             leafConjuncts.addAll(applicableConjuncts);
-            // Update the plan's cost and statistics after adding predicate
-            plan.prepare();
+            changed = true;
         }
 
         // Apply alias if necessary
         if (fromClause.isRenamed()) {
             plan = new RenameNode(plan, fromClause.getResultName());
+            changed = true;
+        }
+
+        // Update the plan's cost and statistics after any changes
+        if (changed) {
+            plan.prepare();
         }
 
         return plan;
@@ -443,6 +444,7 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         HashMap<HashSet<PlanNode>, JoinComponent> joinPlans = new HashMap<>();
 
         // Initially populate joinPlans with just the N leaf plans.
+        // At this point, leaf.leavesUsed should contain only leaf.joinPlan
         for (JoinComponent leaf : leafComponents)
             joinPlans.put(leaf.leavesUsed, leaf);
 
@@ -458,6 +460,55 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
             // TODO:  IMPLEMENT THE CODE THAT GENERATES OPTIMAL PLANS THAT
             //        JOIN N + 1 LEAVES
+            for (Map.Entry<HashSet<PlanNode>, JoinComponent> entry : joinPlans.entrySet()) {
+                HashSet<PlanNode> currUsed = entry.getKey();
+                JoinComponent currBest = entry.getValue();
+
+                for (JoinComponent leaf : leafComponents) {
+                    // If leaf is already used, then continue
+                    if (currUsed.contains(leaf.joinPlan))
+                        continue;
+
+                    // Next join plan, using INNER join
+                    PlanNode nextPlan = new NestedLoopJoinNode(
+                            currBest.joinPlan, leaf.joinPlan, JoinType.INNER, null);
+
+                    // Get all conjuncts used by subplans
+                    HashSet<Expression> nextConjunctsUsed = new HashSet<>(currBest.conjunctsUsed);
+                    nextConjunctsUsed.addAll(leaf.conjunctsUsed);
+
+                    // Apply unused and available conjuncts
+                    HashSet<Expression> unusedConjuncts = new HashSet<>(conjuncts);
+                    unusedConjuncts.removeAll(nextConjunctsUsed);
+                    HashSet<Expression> applicableConjuncts = new HashSet<>();
+                    PredicateUtils.findExprsUsingSchemas(
+                            unusedConjuncts, false, applicableConjuncts,
+                            currBest.joinPlan.getSchema(), leaf.joinPlan.getSchema());
+                    Expression predicate = PredicateUtils.makePredicate(applicableConjuncts);
+                    if (!applicableConjuncts.isEmpty()) {
+                        PlanUtils.addPredicateToPlan(nextPlan, predicate);
+                        nextConjunctsUsed.addAll(applicableConjuncts);
+                    }
+
+                    // Next set of leaves used (KEY)
+                    HashSet<PlanNode> nextUsed = new HashSet<>(currUsed);
+                    nextUsed.add(leaf.joinPlan);
+
+                    // See if new plan is better than old plan by CPU cost
+                    nextPlan.prepare();
+                    if (!nextJoinPlans.keySet().contains(nextUsed) ||
+                        (nextPlan.getCost().cpuCost <
+                         nextJoinPlans.get(nextUsed).joinPlan.getCost().cpuCost)) {
+
+                        // Next JoinComponent (VALUE)
+                        JoinComponent nextJoinComponent =
+                                new JoinComponent(nextPlan, nextUsed, nextConjunctsUsed);
+
+                        // Put in HashMap, overwriting previous value if exists
+                        nextJoinPlans.put(nextUsed, nextJoinComponent);
+                    }
+                }
+            }
 
             // Now that we have generated all plans joining N leaves, time to
             // create all plans joining N + 1 leaves.
