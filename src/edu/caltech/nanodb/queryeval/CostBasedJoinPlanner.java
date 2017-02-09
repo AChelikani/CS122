@@ -3,6 +3,7 @@ package edu.caltech.nanodb.queryeval;
 
 import java.io.IOException;
 
+import java.lang.reflect.Array;
 import java.util.*;
 import java.util.function.Predicate;
 
@@ -150,6 +151,7 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         // 0) The Declaration of Variables
         FromClause fromClause = selClause.getFromClause();
         Expression whereExpr = selClause.getWhereExpr();
+        Expression havingExpr = selClause.getHavingExpr();
         PlanNode plan;
 
         HashSet<Expression> conjuncts = new HashSet<>();
@@ -170,6 +172,24 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             PredicateUtils.collectConjuncts(whereExpr, conjuncts);
         }
 
+        if (havingExpr != null) {
+            logger.debug("Having clause: " + havingExpr.toString());
+            // Pull all conjuncts that do not contain aggregate functions
+            ArrayList<Expression> havingConjuncts = new ArrayList<>();
+            ArrayList<Expression> aggregateHavingConjuncts = new ArrayList<>();
+            PredicateUtils.collectConjuncts(whereExpr, havingConjuncts);
+            for (Expression expr : havingConjuncts) {
+                if(containsAggregateFunction(expr)) {
+                    aggregateHavingConjuncts.add(expr);
+                }
+                else {
+                    conjuncts.add(expr);
+                }
+            }
+            // Set new HAVING clause by exluding those that don't contain aggregation
+            Expression newHavingExpr = PredicateUtils.makePredicate(aggregateHavingConjuncts);
+            selClause.setHavingExpr(newHavingExpr);
+        }
 
         // 2) Create an optimal join plan from top-level from-clause and conjuncts
         if (fromClause == null) {
@@ -185,7 +205,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             conjuncts.removeAll(topJC.conjunctsUsed);
             plan = topJC.joinPlan;
         }
-
 
         // 3) Handle unused conjuncts
         if (!conjuncts.isEmpty()) {
