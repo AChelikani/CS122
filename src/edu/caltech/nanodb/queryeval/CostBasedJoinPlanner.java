@@ -176,19 +176,12 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             logger.debug("Having clause: " + havingExpr.toString());
             // Pull all conjuncts that do not contain aggregate functions
             ArrayList<Expression> havingConjuncts = new ArrayList<>();
-            ArrayList<Expression> aggregateHavingConjuncts = new ArrayList<>();
             PredicateUtils.collectConjuncts(whereExpr, havingConjuncts);
             for (Expression expr : havingConjuncts) {
-                if(containsAggregateFunction(expr)) {
-                    aggregateHavingConjuncts.add(expr);
-                }
-                else {
+                if(!containsAggregateFunction(expr)) {
                     conjuncts.add(expr);
                 }
             }
-            // Set new HAVING clause by exluding those that don't contain aggregation
-            Expression newHavingExpr = PredicateUtils.makePredicate(aggregateHavingConjuncts);
-            selClause.setHavingExpr(newHavingExpr);
         }
 
         // 2) Create an optimal join plan from top-level from-clause and conjuncts
