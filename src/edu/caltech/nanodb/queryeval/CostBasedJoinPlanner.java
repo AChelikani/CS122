@@ -10,6 +10,7 @@ import java.util.function.Predicate;
 import edu.caltech.nanodb.expressions.OrderByExpression;
 import edu.caltech.nanodb.expressions.PredicateUtils;
 import edu.caltech.nanodb.plannodes.*;
+import edu.caltech.nanodb.queryast.SelectValue;
 import edu.caltech.nanodb.relations.JoinType;
 import org.apache.log4j.Logger;
 
@@ -197,6 +198,18 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
             conjuncts.removeAll(topJC.conjunctsUsed);
             plan = topJC.joinPlan;
+
+            // For NATURAL and joins with USING clause, project back onto appropriate schema
+            if (fromClause.getClauseType() == FromClause.ClauseType.JOIN_EXPR) {
+                FromClause.JoinConditionType condType = fromClause.getConditionType();
+                if (condType == FromClause.JoinConditionType.NATURAL_JOIN ||
+                        condType == FromClause.JoinConditionType.JOIN_USING) {
+                    List<SelectValue> computedSelectValues = fromClause.getComputedSelectValues();
+                    if (computedSelectValues != null) {
+                        plan = new ProjectNode(plan, computedSelectValues);
+                    }
+                }
+            }
         }
 
         // 3) Handle unused conjuncts

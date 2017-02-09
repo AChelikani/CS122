@@ -268,17 +268,6 @@ public class SqlTestCase {
     public boolean checkUnorderedResults(TupleLiteral[] expected,
         CommandResult result) throws Exception {
 
-        // Print out all results always for debugging
-        System.out.println("Expected results:");
-        for (TupleLiteral tup : expected) {
-            System.out.println(" * " + tup.toString());
-        }
-
-        System.out.println("Actual results:");
-        for (Tuple tup : result.getTuples()) {
-            System.out.println(" * " + tup.toString());
-        }
-
         if (result.failed())
             throw result.getFailure();
 
