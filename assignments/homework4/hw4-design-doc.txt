@@ -36,8 +36,17 @@ B:  Generating Optimal Joins
 
 B1.  Briefly describe how you generate an "optimal" access to a base table.
 
+     We simply create a FileScanNode for that base table, and then
+     apply all possible conjuncts to that node so that no additional
+     tuples are passed to higher levels of the final plan.
+
 B2.  Briefly describe how you decide when it is acceptable to push
      conjuncts down through an outer join.
+
+     It is acceptable to push conjuncts down through an outer join when
+     the "outer" side of the join is not opposite the child that the
+     conjunct applies to. This means that it's not acceptable to push
+     conjuncts down to a full outer join.
 
 B3.  The planner in this assignment is still somewhat limited; for example,
      we can't push conjuncts down into subqueries.  Using the stores schema,
@@ -45,10 +54,27 @@ B3.  The planner in this assignment is still somewhat limited; for example,
      beneficial to push a conjunct down into the subquery.  (Your planner
      obviously doesn't need to perform this optimization.)
 
+     SELECT store_id
+     FROM (
+        SELECT *
+        FROM stores
+        WHERE property_costs > 10000
+     ) AS expensive_stores
+     WHERE property_costs < 200000
+
 B4.  Enumerate the situations where you call prepare() on plans being
      generated.  Since this operation is somewhat expensive, do you
      see any ways to reduce the number of times you call prepare() in
      your implementation?
+
+     For each leaf node, prepare() is called at least once. If a predicate
+     is added or the leaf has an alias, prepare() is called again afterwards.
+     For the intermediate steps in the dynamic programming algorithm,
+     prepare() is called once to compute the CPU cost. Finally, prepare()
+     is called at the end of makePlan(). One way to reduce the number of times
+     we call prepare() may be to call prepare() only once if a leaf node has
+     an alias but no predicate. However, this may make the code very
+     complicated.
 
 B5.  In what situations can you end up with unused conjuncts after
      planning joins.  Illustrate by giving an example SQL statement
@@ -68,13 +94,20 @@ to write explanatory notes after your output.
 
 C1.  EXPLAIN SELECT * FROM cities WHERE population > 5000000;
 
-C2.  EXPLAIN SELECT store_id FROM stores, cities     WHERE stores.city_id = cities.city_id AND
+C2.  EXPLAIN SELECT store_id FROM stores, cities
+     WHERE stores.city_id = cities.city_id AND
            cities.population > 1000000;
 
-C3.  EXPLAIN SELECT store_id FROM stores JOIN                    (SELECT city_id FROM cities                     WHERE population > 1000000) AS big_cities                    ON stores.city_id = big_cities.city_id;
+C3.  EXPLAIN SELECT store_id FROM stores JOIN
+                    (SELECT city_id FROM cities
+                     WHERE population > 1000000) AS big_cities
+                    ON stores.city_id = big_cities.city_id;
 
-C4.  EXPLAIN SELECT store_id, property_costs     FROM stores, cities, states     WHERE stores.city_id = cities.city_id AND
-           cities.state_id = states.state_id AND           state_name = 'Oregon' AND property_costs > 500000;
+C4.  EXPLAIN SELECT store_id, property_costs
+     FROM stores, cities, states
+     WHERE stores.city_id = cities.city_id AND
+           cities.state_id = states.state_id AND
+           state_name = 'Oregon' AND property_costs > 500000;
 
 E:  Extra Credit [OPTIONAL]
 ---------------------------
