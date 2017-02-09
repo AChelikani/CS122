@@ -82,6 +82,21 @@ B5.  In what situations can you end up with unused conjuncts after
      the stores schema.  Then, describe a strategy for where/how these
      left-over conjuncts should be applied in the plan.
 
+     There can be unused conjuncts that involve grouping/aggregate functions,
+     such as in the HAVING clause. For example, take the query:
+
+     SELECT state_name, COUNT(*) AS num_cities
+     FROM states JOIN cities ON states.state_id = cities.state_id
+     GROUP BY state_name
+     HAVING COUNT(*) > 5;
+
+     The conjunct on COUNT(*) > 5 will be applied after the join, in a
+     HashedGroupAggregate node that groups and aggregates the results. This
+     can be implemented by simply taking leftover aggregate conjuncts after
+     the FROM clause has been evaluated in generateOptimalJoin, and applying
+     them all on top of the returned Plan.
+
+
 C:  Costing SQL Queries
 -----------------------
 
