@@ -437,7 +437,7 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
                 // Outer join the two children
                 plan = new NestedLoopJoinNode(leftComponent.joinPlan, rightComponent.joinPlan,
-                        fromClause.getJoinType(), null);
+                        fromClause.getJoinType(), fromClause.getComputedJoinExpr());
                 break;
             default:
                 throw new IllegalArgumentException("Unrecognized FROM clause type");

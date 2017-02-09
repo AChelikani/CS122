@@ -161,7 +161,7 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
         rightChild.prepare();
 
         // RIGHT OUTER JOIN is the same as LEFT OUTER JOIN but swapped.
-        if (joinType == JoinType.RIGHT_OUTER) {
+        if (joinType == JoinType.RIGHT_OUTER && !isSwapped()) {
             swap();
         }
 
