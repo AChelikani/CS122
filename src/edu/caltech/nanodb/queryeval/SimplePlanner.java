@@ -75,6 +75,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
         Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
 
+        // Check for subquery
         SubqueryPlanner sp = new SubqueryPlanner(selClause);
         SelectClause subquery = sp.parse();
         if (subquery != null) {
