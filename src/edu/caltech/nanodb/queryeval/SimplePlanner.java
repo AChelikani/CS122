@@ -9,6 +9,10 @@ import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.expressions.ColumnName;
 import edu.caltech.nanodb.expressions.Expression;
+import edu.caltech.nanodb.expressions.Environment;
+import edu.caltech.nanodb.expressions.SubqueryOperator;
+import edu.caltech.nanodb.expressions.InSubqueryOperator;
+import edu.caltech.nanodb.expressions.ExistsOperator;
 import edu.caltech.nanodb.expressions.FunctionCall;
 import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
 import edu.caltech.nanodb.expressions.OrderByExpression;
@@ -26,6 +30,8 @@ import edu.caltech.nanodb.plannodes.SortNode;
 import edu.caltech.nanodb.queryast.SelectValue;
 import edu.caltech.nanodb.queryast.FromClause;
 import edu.caltech.nanodb.queryast.SelectClause;
+
+import edu.caltech.nanodb.queryeval.SubqueryPlanner;
 
 import edu.caltech.nanodb.relations.TableInfo;
 
@@ -63,9 +69,28 @@ public class SimplePlanner extends AbstractPlannerImpl {
                 "Not implemented:  enclosing queries");
         }
 
+
+
         FromClause fromClause = selClause.getFromClause();
         Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
+
+        SubqueryPlanner sp = new SubqueryPlanner(selClause);
+        SelectClause subquery = sp.parse();
+        if (subquery != null) {
+            sp.setPlan(makePlan(subquery, null));
+        }
+
+        /**
+        if (whereExpr != null) {
+            InSubqueryOperator subqueryOp = (InSubqueryOperator) whereExpr;
+            SelectClause subquery = subqueryOp.getSubquery();
+            subqueryOp.setSubqueryPlan(makePlan(subquery, null));
+            logger.debug("SUBQUERY INFO HERE **");
+            logger.debug(subqueryOp.toString());
+        }
+        **/
+
 
         // Process FROM clause
         if (fromClause == null) {
