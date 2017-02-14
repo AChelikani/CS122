@@ -80,7 +80,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
         } else if (fromClause.isBaseTable()) {
             logger.debug("Using SimpleSelect: " + fromClause.toString());
             plan = makeSimpleSelect(fromClause.getTableName(),
-                    whereExpr, null);
+                    whereExpr, enclosingSelects);
             whereExpr = null;   // Set to null to avoid double filtering
             // For when AS is used to rename table from a FROM clause
             if (fromClause.isRenamed()) {
@@ -258,15 +258,6 @@ public class SimplePlanner extends AbstractPlannerImpl {
         List<SelectClause> enclosingSelects) throws IOException {
         if (tableName == null)
             throw new IllegalArgumentException("tableName cannot be null");
-
-        if (enclosingSelects != null) {
-            // If there are enclosing selects, this subquery's predicate may
-            // reference an outer query's value, but we don't detect that here.
-            // Therefore we will probably fail with an unrecognized column
-            // reference.
-            logger.warn("Currently we are not clever enough to detect " +
-                "correlated subqueries, so expect things are about to break...");
-        }
 
         // Open the table.
         TableInfo tableInfo = storageManager.getTableManager().openTable(tableName);
