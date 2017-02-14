@@ -18,14 +18,12 @@ import edu.caltech.nanodb.expressions.OrderByExpression;
 /** Class to plan for subqueries
  * Supports IN subquery in WHERE clause, EXISTS subquery in WHERE clause
  * and scalar subquery (1 col, 1 row) in SELECT clause
+ * Throws exception when subquery in order by or group by clause is detected
  */
 public class SubqueryPlanner {
 
     /* Passed in parent select clause */
     SelectClause selClause;
-
-    /* Subquery select clause */
-    SelectClause subQuery = null;
 
     /* List of subqueries */
     ArrayList<SelectClause> subqueries = new ArrayList<SelectClause>();
@@ -33,8 +31,6 @@ public class SubqueryPlanner {
     /* List of subquery operators */
     ArrayList<SubqueryOperator> subOps = new ArrayList<SubqueryOperator>();
 
-    /* Subquery operator which we will set a plan to */
-    SubqueryOperator subOp;
 
     public SubqueryPlanner(SelectClause selClause) {
         this.selClause = selClause;
@@ -61,29 +57,28 @@ public class SubqueryPlanner {
                 throw new UnsupportedOperationException("Not a valid place to put subqyery");
             }
         }
+        // Check if there is a scalar subquery
         if (selectValues.size() == 1 && selectValues.get(0).isScalarSubquery()) {
             subOps.add((ScalarSubquery) selectValues.get(0).getExpression());
-            //subOp = (ScalarSubquery) selectValues.get(0);
         }
+        // Checks for subqueries in where expression
         if (whereExpr != null) {
             // EXISTS statement or IN statement in WHERE clause
             if (whereExpr instanceof ExistsOperator) {
                 subOps.add((ExistsOperator) whereExpr);
-                //subOp = (ExistsOperator) whereExpr;
             } else if (whereExpr instanceof InSubqueryOperator) {
                 subOps.add((InSubqueryOperator) whereExpr);
-                //subOp = (InSubqueryOperator) whereExpr;
             }
         }
+        // Checks for subqueries in having expression
         if (havingExpr != null) {
             if (havingExpr instanceof ExistsOperator) {
                 subOps.add((ExistsOperator) havingExpr);
-                //subOp = (ExistsOperator) havingExpr;
             } else if (havingExpr instanceof InSubqueryOperator) {
                 subOps.add((InSubqueryOperator) havingExpr);
-                //subOp = (InSubqueryOperator) havingExpr;
             }
         }
+        // Computes all subqueries from operators
         for (SubqueryOperator so : subOps) {
             subqueries.add(so.getSubquery());
         }
