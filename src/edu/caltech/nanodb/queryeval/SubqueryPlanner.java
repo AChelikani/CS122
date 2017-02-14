@@ -40,8 +40,9 @@ public class SubqueryPlanner {
         }
     }
 
+    public Environment environment;
+
     private SelectClause selClause;
-    private Environment environment;
     private AbstractPlannerImpl parentPlanner;
 
     public SubqueryPlanner(SelectClause selectClause, AbstractPlannerImpl parent) {
@@ -63,7 +64,7 @@ public class SubqueryPlanner {
                 SubqueryOperator subqueryOp = (SubqueryOperator) expr;
                 // TODO: enclosingSelects
                 PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
-                plan.setEnvironment(environment);
+                plan.addParentEnvironmentToPlanTree(environment);
                 subqueryOp.setSubqueryPlan(plan);
                 subqueryFound = true;
             }
@@ -84,7 +85,7 @@ public class SubqueryPlanner {
         for (SubqueryOperator subqueryOp : subqueryFinder.subqueryOperators) {
             // TODO: enclosingSelects
             PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
-            plan.setEnvironment(environment);
+            plan.addParentEnvironmentToPlanTree(environment);
             subqueryOp.setSubqueryPlan(plan);
         }
         return true;

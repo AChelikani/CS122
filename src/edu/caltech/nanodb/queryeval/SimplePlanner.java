@@ -76,11 +76,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
         PlanNode plan;
         ArrayList<SelectClause> subqueries;
 
-        // Check for subquery
-        SubqueryPlanner sp = new SubqueryPlanner(selClause, this);
-        sp.scanWhereExpr();
-        sp.scanHavingExpr();
-        sp.scanSelectValues();
+        SubqueryPlanner subqueryPlanner = new SubqueryPlanner(selClause, this);
 
         // Process FROM clause
         if (fromClause == null) {
@@ -107,13 +103,23 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = new SimpleFilterNode(plan, whereExpr);
         }
 
+        if (subqueryPlanner.scanWhereExpr()) {
+            plan.setEnvironment(subqueryPlanner.environment);
+        }
+
         // Grouping and Aggregation
         // This may modify selClause to account for aggregate functions and
         // complex expressions in GROUP BY clauses.
         plan = processGroupAggregation(plan, selClause);
+        if (subqueryPlanner.scanHavingExpr()) {
+            plan.setEnvironment(subqueryPlanner.environment);
+        }
 
         if (!selClause.isTrivialProject()) {
             plan = new ProjectNode(plan, selClause.getSelectValues());
+            if (subqueryPlanner.scanSelectValues()) {
+                plan.setEnvironment(subqueryPlanner.environment);
+            }
         }
 
         // Process ORDER BY clause
