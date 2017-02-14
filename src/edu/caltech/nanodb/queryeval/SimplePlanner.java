@@ -71,32 +71,16 @@ public class SimplePlanner extends AbstractPlannerImpl {
                 "Not implemented:  enclosing queries");
         }
 
-
-
         FromClause fromClause = selClause.getFromClause();
         Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
-        ArrayList<SelectClause> subqueries = new ArrayList<SelectClause>();
+        ArrayList<SelectClause> subqueries;
 
         // Check for subquery
-        SubqueryPlanner sp = new SubqueryPlanner(selClause);
-        subqueries = sp.parse();
-        if (subqueries.size() != 0) {
-            for (int i = 0; i < subqueries.size(); i ++) {
-                sp.setPlan(makePlan(subqueries.get(i), null), i);
-            }
-        }
-
-        /**
-        if (whereExpr != null) {
-            InSubqueryOperator subqueryOp = (InSubqueryOperator) whereExpr;
-            SelectClause subquery = subqueryOp.getSubquery();
-            subqueryOp.setSubqueryPlan(makePlan(subquery, null));
-            logger.debug("SUBQUERY INFO HERE **");
-            logger.debug(subqueryOp.toString());
-        }
-        **/
-
+        SubqueryPlanner sp = new SubqueryPlanner(selClause, this);
+        sp.scanWhereExpr();
+        sp.scanHavingExpr();
+        sp.scanSelectValues();
 
         // Process FROM clause
         if (fromClause == null) {

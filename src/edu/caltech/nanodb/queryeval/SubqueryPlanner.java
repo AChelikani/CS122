@@ -1,96 +1,118 @@
 package edu.caltech.nanodb.queryeval;
 
+import edu.caltech.nanodb.expressions.*;
 import edu.caltech.nanodb.queryast.SelectClause;
 import edu.caltech.nanodb.relations.Schema;
-import edu.caltech.nanodb.expressions.Expression;
-import edu.caltech.nanodb.expressions.SubqueryOperator;
-import edu.caltech.nanodb.expressions.ScalarSubquery;
-import edu.caltech.nanodb.expressions.InSubqueryOperator;
-import edu.caltech.nanodb.expressions.ExistsOperator;
 import edu.caltech.nanodb.plannodes.PlanNode;
-import java.util.List;
-import java.util.ArrayList;
-import edu.caltech.nanodb.queryast.SelectValue;
-import edu.caltech.nanodb.expressions.OrderByExpression;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import edu.caltech.nanodb.queryast.SelectValue;
 
 
 /** Class to plan for subqueries
  * Supports IN subquery in WHERE clause, EXISTS subquery in WHERE clause
  * and scalar subquery (1 col, 1 row) in SELECT clause
- * Throws exception when subquery in order by or group by clause is detected
+ * Throws exception when subquery in ORDER BY or GROUP BY clause is detected
  */
 public class SubqueryPlanner {
 
-    /* Passed in parent select clause */
-    SelectClause selClause;
+    private static class SubqueryFinder implements ExpressionProcessor {
 
-    /* List of subqueries */
-    ArrayList<SelectClause> subqueries = new ArrayList<SelectClause>();
+        ArrayList<SubqueryOperator> subqueryOperators;
 
-    /* List of subquery operators */
-    ArrayList<SubqueryOperator> subOps = new ArrayList<SubqueryOperator>();
+        public SubqueryFinder() {
+            subqueryOperators = new ArrayList<>();
+        }
 
+        public void enter(Expression e) {
+            if (e instanceof ScalarSubquery ||
+                    e instanceof ExistsOperator ||
+                    e instanceof InSubqueryOperator) {
+                subqueryOperators.add((SubqueryOperator) e);
+            }
+        }
 
-    public SubqueryPlanner(SelectClause selClause) {
-        this.selClause = selClause;
+        public Expression leave(Expression e) {
+            // This function never changes the node that is traversed.
+            return e;
+        }
     }
 
-    /** Parse the passed in select clause to determine what subqueries there are
-     * @return SelectClause of subquery
-     *
-     */
-    public ArrayList<SelectClause> parse() {
-        Expression whereExpr = selClause.getWhereExpr();
-        Expression havingExpr = selClause.getHavingExpr();
-        List<Expression> groupByExprs = selClause.getGroupByExprs();
-        List<OrderByExpression> orderByExprs = selClause.getOrderByExprs();
+    private SelectClause selClause;
+    private Environment environment;
+    private AbstractPlannerImpl parentPlanner;
+
+    public SubqueryPlanner(SelectClause selectClause, AbstractPlannerImpl parent) {
+        selClause = selectClause;
+        parentPlanner = parent;
+        environment = new Environment();
+
+        validateGroupByExpr();
+        validateOrderByExpr();
+    }
+
+    public boolean scanSelectValues() throws IOException {
         List<SelectValue> selectValues = selClause.getSelectValues();
-        // Check if subqueries in group by or order by expressions
+        boolean subqueryFound = false;
+
+        for (SelectValue sv : selectValues) {
+            Expression expr = sv.getExpression();
+            if (expr instanceof ScalarSubquery) {
+                SubqueryOperator subqueryOp = (SubqueryOperator) expr;
+                // TODO: enclosingSelects
+                PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
+                plan.setEnvironment(environment);
+                subqueryOp.setSubqueryPlan(plan);
+                subqueryFound = true;
+            }
+        }
+        return subqueryFound;
+    }
+
+    public boolean scanExpr(Expression e) throws IOException {
+        if (e == null)
+            return false;
+        SubqueryFinder subqueryFinder = new SubqueryFinder();
+        e.traverse(subqueryFinder);
+
+        if (subqueryFinder.subqueryOperators.isEmpty()) {
+            return false;
+        }
+
+        for (SubqueryOperator subqueryOp : subqueryFinder.subqueryOperators) {
+            // TODO: enclosingSelects
+            PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
+            plan.setEnvironment(environment);
+            subqueryOp.setSubqueryPlan(plan);
+        }
+        return true;
+    }
+
+    public boolean scanWhereExpr() throws IOException {
+        return scanExpr(selClause.getWhereExpr());
+    }
+
+    public boolean scanHavingExpr() throws IOException {
+        return scanExpr(selClause.getHavingExpr());
+    }
+
+    public void validateGroupByExpr() {
+        List<Expression> groupByExprs = selClause.getGroupByExprs();
         for (Expression e : groupByExprs) {
             if (e instanceof SubqueryOperator) {
                 throw new UnsupportedOperationException("Not a valid place to put subquery");
             }
         }
+    }
+
+    public void validateOrderByExpr() {
+        List<OrderByExpression> orderByExprs = selClause.getOrderByExprs();
         for (OrderByExpression e : orderByExprs) {
             if (e.getExpression() instanceof SubqueryOperator) {
-                throw new UnsupportedOperationException("Not a valid place to put subqyery");
+                throw new UnsupportedOperationException("Not a valid place to put subquery");
             }
         }
-        // Check if there is a scalar subquery
-        if (selectValues.size() == 1 && selectValues.get(0).isScalarSubquery()) {
-            subOps.add((ScalarSubquery) selectValues.get(0).getExpression());
-        }
-        // Checks for subqueries in where expression
-        if (whereExpr != null) {
-            // EXISTS statement or IN statement in WHERE clause
-            if (whereExpr instanceof ExistsOperator) {
-                subOps.add((ExistsOperator) whereExpr);
-            } else if (whereExpr instanceof InSubqueryOperator) {
-                subOps.add((InSubqueryOperator) whereExpr);
-            }
-        }
-        // Checks for subqueries in having expression
-        if (havingExpr != null) {
-            if (havingExpr instanceof ExistsOperator) {
-                subOps.add((ExistsOperator) havingExpr);
-            } else if (havingExpr instanceof InSubqueryOperator) {
-                subOps.add((InSubqueryOperator) havingExpr);
-            }
-        }
-        // Computes all subqueries from operators
-        for (SubqueryOperator so : subOps) {
-            subqueries.add(so.getSubquery());
-        }
-        return subqueries;
     }
-
-    /** Set the plan node for the subquery
-     * @param PlanNode with plan for subquery
-     *
-    */
-    public void setPlan(PlanNode plan, int i) {
-        subOps.get(i).setSubqueryPlan(plan);
-    }
-
 }
