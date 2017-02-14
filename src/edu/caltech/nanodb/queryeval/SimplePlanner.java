@@ -66,17 +66,12 @@ public class SimplePlanner extends AbstractPlannerImpl {
     public PlanNode makePlan(SelectClause selClause,
         List<SelectClause> enclosingSelects) throws IOException {
 
-        if (enclosingSelects != null && !enclosingSelects.isEmpty()) {
-            throw new UnsupportedOperationException(
-                "Not implemented:  enclosing queries");
-        }
-
         FromClause fromClause = selClause.getFromClause();
         Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
         ArrayList<SelectClause> subqueries;
 
-        SubqueryPlanner subqueryPlanner = new SubqueryPlanner(selClause, this);
+        SubqueryPlanner subqueryPlanner = new SubqueryPlanner(selClause, this, enclosingSelects);
 
         // Process FROM clause
         if (fromClause == null) {
@@ -87,8 +82,12 @@ public class SimplePlanner extends AbstractPlannerImpl {
             plan = makeSimpleSelect(fromClause.getTableName(),
                     whereExpr, null);
             whereExpr = null;   // Set to null to avoid double filtering
+            // For when AS is used to rename table from a FROM clause
+            if (fromClause.isRenamed()) {
+                plan = new RenameNode(plan, fromClause.getResultName());
+            }
         } else {
-            logger.debug("From clause: " + fromClause.toString());
+            logger.debug("From clause: "  + fromClause.toString());
             plan = processFromClause(fromClause, true);
         }
 
@@ -105,6 +104,7 @@ public class SimplePlanner extends AbstractPlannerImpl {
 
         if (subqueryPlanner.scanWhereExpr()) {
             plan.setEnvironment(subqueryPlanner.environment);
+            subqueryPlanner.reset();
         }
 
         // Grouping and Aggregation
@@ -113,12 +113,14 @@ public class SimplePlanner extends AbstractPlannerImpl {
         plan = processGroupAggregation(plan, selClause);
         if (subqueryPlanner.scanHavingExpr()) {
             plan.setEnvironment(subqueryPlanner.environment);
+            subqueryPlanner.reset();
         }
 
         if (!selClause.isTrivialProject()) {
             plan = new ProjectNode(plan, selClause.getSelectValues());
             if (subqueryPlanner.scanSelectValues()) {
                 plan.setEnvironment(subqueryPlanner.environment);
+                subqueryPlanner.reset();
             }
         }
 

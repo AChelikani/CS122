@@ -44,11 +44,22 @@ public class SubqueryPlanner {
 
     private SelectClause selClause;
     private AbstractPlannerImpl parentPlanner;
+    private List<SelectClause> enclosingSelects;
 
-    public SubqueryPlanner(SelectClause selectClause, AbstractPlannerImpl parent) {
+    public SubqueryPlanner(SelectClause selectClause,
+                           AbstractPlannerImpl parent,
+                           List<SelectClause> parentEnclosingSelects) {
         selClause = selectClause;
         parentPlanner = parent;
         environment = new Environment();
+
+        if (parentEnclosingSelects == null) {
+            enclosingSelects = new ArrayList<SelectClause>();
+        }
+        else {
+            enclosingSelects = new ArrayList<SelectClause>(parentEnclosingSelects);
+        }
+        enclosingSelects.add(selClause);
 
         validateGroupByExpr();
         validateOrderByExpr();
@@ -62,8 +73,7 @@ public class SubqueryPlanner {
             Expression expr = sv.getExpression();
             if (expr instanceof ScalarSubquery) {
                 SubqueryOperator subqueryOp = (SubqueryOperator) expr;
-                // TODO: enclosingSelects
-                PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
+                PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), enclosingSelects);
                 plan.addParentEnvironmentToPlanTree(environment);
                 subqueryOp.setSubqueryPlan(plan);
                 subqueryFound = true;
@@ -83,8 +93,7 @@ public class SubqueryPlanner {
         }
 
         for (SubqueryOperator subqueryOp : subqueryFinder.subqueryOperators) {
-            // TODO: enclosingSelects
-            PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), null);
+            PlanNode plan = parentPlanner.makePlan(subqueryOp.getSubquery(), enclosingSelects);
             plan.addParentEnvironmentToPlanTree(environment);
             subqueryOp.setSubqueryPlan(plan);
         }
@@ -115,5 +124,9 @@ public class SubqueryPlanner {
                 throw new UnsupportedOperationException("Not a valid place to put subquery");
             }
         }
+    }
+
+    public void reset() {
+        environment = new Environment();
     }
 }
