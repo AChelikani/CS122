@@ -4,6 +4,8 @@ package edu.caltech.nanodb.queryeval;
 import java.io.IOException;
 import java.util.Map;
 import java.util.List;
+import java.util.ArrayList;
+
 
 import org.apache.log4j.Logger;
 
@@ -74,12 +76,15 @@ public class SimplePlanner extends AbstractPlannerImpl {
         FromClause fromClause = selClause.getFromClause();
         Expression whereExpr = selClause.getWhereExpr();
         PlanNode plan;
+        ArrayList<SelectClause> subqueries = new ArrayList<SelectClause>();
 
         // Check for subquery
         SubqueryPlanner sp = new SubqueryPlanner(selClause);
-        SelectClause subquery = sp.parse();
-        if (subquery != null) {
-            sp.setPlan(makePlan(subquery, null));
+        subqueries = sp.parse();
+        if (subqueries.size() != 0) {
+            for (int i = 0; i < subqueries.size(); i ++) {
+                sp.setPlan(makePlan(subqueries.get(i), null), i);
+            }
         }
 
         /**

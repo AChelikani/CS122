@@ -4,9 +4,15 @@ import edu.caltech.nanodb.queryast.SelectClause;
 import edu.caltech.nanodb.relations.Schema;
 import edu.caltech.nanodb.expressions.Expression;
 import edu.caltech.nanodb.expressions.SubqueryOperator;
+import edu.caltech.nanodb.expressions.ScalarSubquery;
 import edu.caltech.nanodb.expressions.InSubqueryOperator;
 import edu.caltech.nanodb.expressions.ExistsOperator;
 import edu.caltech.nanodb.plannodes.PlanNode;
+import java.util.List;
+import java.util.ArrayList;
+import edu.caltech.nanodb.queryast.SelectValue;
+import edu.caltech.nanodb.expressions.OrderByExpression;
+
 
 
 /** Class to plan for subqueries
@@ -19,7 +25,13 @@ public class SubqueryPlanner {
     SelectClause selClause;
 
     /* Subquery select clause */
-    SelectClause subQuery;
+    SelectClause subQuery = null;
+
+    /* List of subqueries */
+    ArrayList<SelectClause> subqueries = new ArrayList<SelectClause>();
+
+    /* List of subquery operators */
+    ArrayList<SubqueryOperator> subOps = new ArrayList<SubqueryOperator>();
 
     /* Subquery operator which we will set a plan to */
     SubqueryOperator subOp;
@@ -32,25 +44,58 @@ public class SubqueryPlanner {
      * @return SelectClause of subquery
      *
      */
-    public SelectClause parse() {
+    public ArrayList<SelectClause> parse() {
         Expression whereExpr = selClause.getWhereExpr();
+        Expression havingExpr = selClause.getHavingExpr();
+        List<Expression> groupByExprs = selClause.getGroupByExprs();
+        List<OrderByExpression> orderByExprs = selClause.getOrderByExprs();
+        List<SelectValue> selectValues = selClause.getSelectValues();
+        // Check if subqueries in group by or order by expressions
+        for (Expression e : groupByExprs) {
+            if (e instanceof SubqueryOperator) {
+                throw new UnsupportedOperationException("Not a valid place to put subquery");
+            }
+        }
+        for (OrderByExpression e : orderByExprs) {
+            if (e.getExpression() instanceof SubqueryOperator) {
+                throw new UnsupportedOperationException("Not a valid place to put subqyery");
+            }
+        }
+        if (selectValues.size() == 1 && selectValues.get(0).isScalarSubquery()) {
+            subOps.add((ScalarSubquery) selectValues.get(0).getExpression());
+            //subOp = (ScalarSubquery) selectValues.get(0);
+        }
         if (whereExpr != null) {
             // EXISTS statement or IN statement in WHERE clause
-            // TODO: not sure how to have planner diffrentiate between different cases
-            // TODO: check for subquery in grouping or order by
-            subOp = (ExistsOperator) whereExpr;
-            subQuery = subOp.getSubquery();
-            return subQuery;
+            if (whereExpr instanceof ExistsOperator) {
+                subOps.add((ExistsOperator) whereExpr);
+                //subOp = (ExistsOperator) whereExpr;
+            } else if (whereExpr instanceof InSubqueryOperator) {
+                subOps.add((InSubqueryOperator) whereExpr);
+                //subOp = (InSubqueryOperator) whereExpr;
+            }
         }
-        return null;
+        if (havingExpr != null) {
+            if (havingExpr instanceof ExistsOperator) {
+                subOps.add((ExistsOperator) havingExpr);
+                //subOp = (ExistsOperator) havingExpr;
+            } else if (havingExpr instanceof InSubqueryOperator) {
+                subOps.add((InSubqueryOperator) havingExpr);
+                //subOp = (InSubqueryOperator) havingExpr;
+            }
+        }
+        for (SubqueryOperator so : subOps) {
+            subqueries.add(so.getSubquery());
+        }
+        return subqueries;
     }
 
     /** Set the plan node for the subquery
      * @param PlanNode with plan for subquery
      *
     */
-    public void setPlan(PlanNode plan) {
-        subOp.setSubqueryPlan(plan);
+    public void setPlan(PlanNode plan, int i) {
+        subOps.get(i).setSubqueryPlan(plan);
     }
 
 }
