@@ -27,7 +27,7 @@ public class InSubqueryOperator extends SubqueryOperator {
      * The expression to check against the set on the righthand side of the
      * <tt>IN</tt> operator.
      */
-    Expression expr;
+    public Expression expr;
 
 
     public InSubqueryOperator(Expression expr, SelectClause subquery) {

@@ -281,7 +281,7 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
                 rightTuple = null;
                 while (getTuplesToJoin()) {
                     if (rightTuple != null && canJoinTuples()) {
-                        return leftTuple;
+                        return joinTuples(leftTuple, null);
                     }
                 }
                 break;
@@ -295,7 +295,7 @@ public class NestedLoopJoinNode extends ThetaJoinNode {
             case ANTIJOIN: {
                 while (getTuplesToJoin()) {
                     if (rightTuple == null) {
-                        return leftTuple;
+                        return joinTuples(leftTuple, null);
                     }
                     else if (canJoinTuples()) {
                         rightTuple = null;
