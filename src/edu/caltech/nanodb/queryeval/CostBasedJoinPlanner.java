@@ -144,10 +144,8 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         // various kinds of subqueries, queries without a FROM clause, etc.,
         // can all be incorporated into this sketch relatively easily.
 
-        if (enclosingSelects != null && !enclosingSelects.isEmpty()) {
-            throw new UnsupportedOperationException(
-                    "Not implemented:  enclosing queries");
-        }
+        // Decorrelate the query AST before doing anything else
+        decorrelate(selClause);
 
         // 0) The Declaration of Variables
         FromClause fromClause = selClause.getFromClause();
@@ -157,6 +155,8 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
         HashSet<Expression> conjuncts = new HashSet<>();
         ArrayList<FromClause> leafFromClauses = new ArrayList<>();
+
+        SubqueryPlanner subqueryPlanner = new SubqueryPlanner(selClause, this, enclosingSelects);
 
 
         // 1) Pull conjuncts from WHERE and HAVING
@@ -218,16 +218,29 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             plan = new SimpleFilterNode(plan, predicate);
         }
 
+        if (subqueryPlanner.scanWhereExpr()) {
+            plan.setEnvironment(subqueryPlanner.environment);
+            subqueryPlanner.reset();
+        }
+
 
         // 3.5) Grouping and Aggregation
         // This may modify selClause to account for aggregate functions and
         // complex expressions in GROUP BY clauses.
         plan = processGroupAggregation(plan, selClause);
+        if (subqueryPlanner.scanHavingExpr()) {
+            plan.setEnvironment(subqueryPlanner.environment);
+            subqueryPlanner.reset();
+        }
 
 
         // 4) Project plan node
         if (!selClause.isTrivialProject()) {
             plan = new ProjectNode(plan, selClause.getSelectValues());
+            if (subqueryPlanner.scanSelectValues()) {
+                plan.setEnvironment(subqueryPlanner.environment);
+                subqueryPlanner.reset();
+            }
         }
 
 
@@ -331,8 +344,10 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
                 leafFromClauses.add(fromClause);
                 break;
             case JOIN_EXPR:
-                // Keep outer joins as leaves
-                if (fromClause.isOuterJoin()) {
+                // Keep outer joins, semijoins, antijoins as leaves
+                if (fromClause.isOuterJoin() ||
+                        fromClause.getJoinType() == JoinType.SEMIJOIN ||
+                        fromClause.getJoinType() == JoinType.ANTIJOIN) {
                     leafFromClauses.add(fromClause);
                 }
                 // Recurse on left and right child
@@ -444,9 +459,11 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
                 plan = makePlan(fromClause.getSelectClause(), null);
                 break;
             case JOIN_EXPR:
-                if (!fromClause.isOuterJoin()) {
-                    throw new IllegalArgumentException("Specified FROM clause is a join" +
-                            "expression that isn't an outer join");
+                if (!fromClause.isOuterJoin() &&
+                        !(fromClause.getJoinType() == JoinType.SEMIJOIN) &&
+                        !(fromClause.getJoinType() == JoinType.ANTIJOIN)) {
+                    throw new IllegalArgumentException("Specified FROM clause is a join " +
+                            "expression that isn't an outer/semi/anti join");
                 }
                 // Compute child join components for outer joins
                 JoinComponent leftComponent;

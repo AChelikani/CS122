@@ -1,22 +1,21 @@
 package edu.caltech.nanodb.queryeval;
 
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import edu.caltech.nanodb.expressions.ColumnName;
-import edu.caltech.nanodb.expressions.GroupAggregationProcessor;
+import edu.caltech.nanodb.expressions.*;
 import edu.caltech.nanodb.plannodes.HashedGroupAggregateNode;
 import edu.caltech.nanodb.plannodes.PlanNode;
 import edu.caltech.nanodb.plannodes.ProjectNode;
 import edu.caltech.nanodb.plannodes.SimpleFilterNode;
+import edu.caltech.nanodb.relations.JoinType;
 import org.apache.log4j.Logger;
 
 import edu.caltech.nanodb.queryast.FromClause;
 import edu.caltech.nanodb.queryast.SelectClause;
 import edu.caltech.nanodb.queryast.SelectValue;
-import edu.caltech.nanodb.expressions.Expression;
-import edu.caltech.nanodb.expressions.FunctionCall;
 import edu.caltech.nanodb.storage.StorageManager;
 
 
@@ -178,5 +177,116 @@ public abstract class AbstractPlannerImpl implements Planner {
         }
 
         return plan;
+    }
+
+    /**
+     * Decorrelates two query types. First,
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ...
+     *   WHERE a IN (SELECT ... FROM t2 WHERE b = t1.c)
+     * </pre>
+     * is decorrelated into:
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ... LEFT SEMIJOIN (SELECT ... FROM t2)
+     *   ON b = t1.c AND a = ...
+     * </pre>
+     * Second,
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ...
+     *   WHERE EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+     * </pre>
+     * is decorrelated into:
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ... LEFT SEMIJOIN (SELECT ... FROM t2)
+     *   ON t2.a = t1.b
+     * </pre>
+     *
+     * For both cases, we decorrelate only when the subquery is a simple
+     * BASE_TABLE, since the decorrelated query requires an alias for the
+     * nested SELECT. Rather than use a placeholder, we just use the table name.
+     *
+     * @param selClause the SELECT clause AST to decorrelate
+     * @throws IOException
+     */
+    protected void decorrelate(SelectClause selClause) throws IOException {
+        Expression whereExpr = selClause.getWhereExpr();
+
+        // SELECT ... FROM t1 ... WHERE a IN (SELECT ... FROM t2 WHERE b = t1.c)
+        if (whereExpr instanceof InSubqueryOperator) {
+            SelectClause subquery = ((InSubqueryOperator) whereExpr).getSubquery();
+
+            if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
+                String resultName = subquery.getFromClause().getResultName();
+                Expression predicate;
+
+                // Tack on subquery WHERE expression
+                predicate = subquery.getWhereExpr();
+                subquery.setWhereExpr(null);
+
+                // Tack on equality comparison for IN
+                Expression lhs = ((InSubqueryOperator) whereExpr).expr;
+                Expression rhs = new ColumnValue(subquery.getSchema().getColumnInfo(0).getColumnName());
+                Expression inCompare = new CompareOperator(CompareOperator.Type.EQUALS, lhs, rhs);
+                if (predicate == null) {
+                    predicate = inCompare;
+                } else {
+                    BooleanOperator combined = new BooleanOperator(BooleanOperator.Type.AND_EXPR);
+                    combined.addTerm(predicate);
+                    combined.addTerm(inCompare);
+                    predicate = combined;
+                }
+
+                // Left and right FROM clauses
+                FromClause fromClause = selClause.getFromClause();
+                FromClause subqueryFromClause = new FromClause(subquery, resultName);
+
+                // SEMIJOIN with ON condition
+                FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, JoinType.SEMIJOIN);
+                newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
+                newFromClause.setOnExpression(predicate);
+
+                // Replace FROM clause and WHERE clause
+                selClause.setFromClause(newFromClause);
+                selClause.setWhereExpr(null);
+
+                // Recompute schema
+                selClause.computeSchema(storageManager.getTableManager(), null);
+            }
+        }
+
+        // SELECT ... FROM t1 ... WHERE EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+        if (whereExpr instanceof ExistsOperator) {
+            SelectClause subquery = ((ExistsOperator) whereExpr).getSubquery();
+
+            if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
+                String resultName = subquery.getFromClause().getResultName();
+                Expression subWhereExpr = subquery.getWhereExpr();
+                subquery.setWhereExpr(null);
+
+                // Left and right FROM clauses
+                FromClause fromClause = selClause.getFromClause();
+                FromClause subqueryFromClause = new FromClause(subquery, resultName);
+
+                // SEMIJOIN with ON condition
+                FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, JoinType.SEMIJOIN);
+                if (subWhereExpr != null) {
+                    newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
+                    newFromClause.setOnExpression(subWhereExpr);
+                }
+
+                // Replace FROM clause and WHERE clause
+                selClause.setFromClause(newFromClause);
+                selClause.setWhereExpr(null);
+
+                // Recompute schema
+                selClause.computeSchema(storageManager.getTableManager(), null);
+            }
+        }
+
+
     }
 }

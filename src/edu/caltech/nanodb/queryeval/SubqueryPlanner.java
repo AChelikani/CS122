@@ -82,7 +82,15 @@ public class SubqueryPlanner {
         return subqueryFound;
     }
 
-    public boolean scanExpr(Expression e) throws IOException {
+    public boolean scanWhereExpr() throws IOException {
+        return scanExpr(selClause.getWhereExpr());
+    }
+
+    public boolean scanHavingExpr() throws IOException {
+        return scanExpr(selClause.getHavingExpr());
+    }
+
+    private boolean scanExpr(Expression e) throws IOException {
         if (e == null)
             return false;
         SubqueryFinder subqueryFinder = new SubqueryFinder();
@@ -100,15 +108,7 @@ public class SubqueryPlanner {
         return true;
     }
 
-    public boolean scanWhereExpr() throws IOException {
-        return scanExpr(selClause.getWhereExpr());
-    }
-
-    public boolean scanHavingExpr() throws IOException {
-        return scanExpr(selClause.getHavingExpr());
-    }
-
-    public void validateGroupByExpr() {
+    private void validateGroupByExpr() {
         List<Expression> groupByExprs = selClause.getGroupByExprs();
         for (Expression e : groupByExprs) {
             if (e instanceof SubqueryOperator) {
@@ -117,7 +117,7 @@ public class SubqueryPlanner {
         }
     }
 
-    public void validateOrderByExpr() {
+    private void validateOrderByExpr() {
         List<OrderByExpression> orderByExprs = selClause.getOrderByExprs();
         for (OrderByExpression e : orderByExprs) {
             if (e.getExpression() instanceof SubqueryOperator) {

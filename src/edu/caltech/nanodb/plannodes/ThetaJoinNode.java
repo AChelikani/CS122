@@ -96,7 +96,6 @@ public abstract class ThetaJoinNode extends PlanNode {
      */
     protected Tuple joinTuples(Tuple left, Tuple right) {
 
-        // TODO:  Extend this to support semi-join and anti-join.
         if (joinType == JoinType.SEMIJOIN || joinType == JoinType.ANTIJOIN) {
             assert right == null;
             return new TupleLiteral(left);
