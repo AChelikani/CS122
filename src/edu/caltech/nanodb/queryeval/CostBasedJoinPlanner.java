@@ -122,7 +122,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
     public PlanNode makePlan(SelectClause selClause,
         List<SelectClause> enclosingSelects) throws IOException {
 
-        // TODO:  Implement!
         //
         // This is a very rough sketch of how this function will work,
         // focusing mainly on join planning:
@@ -157,7 +156,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         ArrayList<FromClause> leafFromClauses = new ArrayList<>();
 
         SubqueryPlanner subqueryPlanner = new SubqueryPlanner(selClause, this, enclosingSelects);
-
 
         // 1) Pull conjuncts from WHERE and HAVING
         if (whereExpr != null) {
@@ -411,7 +409,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
 
     /**
      * Constructs a plan tree for evaluating the specified from-clause.
-     * TODO:  COMPLETE THE DOCUMENTATION
      *
      * @param fromClause the select nodes that need to be joined.
      *
@@ -435,7 +432,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
         Collection<Expression> conjuncts, HashSet<Expression> leafConjuncts)
         throws IOException {
 
-        // TODO:  IMPLEMENT.
         //        If you apply any conjuncts then make sure to add them to the
         //        leafConjuncts collection.
         //
@@ -484,9 +480,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             default:
                 throw new IllegalArgumentException("Unrecognized FROM clause type");
         }
-
-        // TODO: Does this need to be called if conjuncts is empty
-        // (Should prepare be called at least once for every function call)
 
         // Prepare plan to set its schema
         plan.prepare();
@@ -574,8 +567,6 @@ public class CostBasedJoinPlanner extends AbstractPlannerImpl {
             HashMap<HashSet<PlanNode>, JoinComponent> nextJoinPlans =
                 new HashMap<>();
 
-            // TODO:  IMPLEMENT THE CODE THAT GENERATES OPTIMAL PLANS THAT
-            //        JOIN N + 1 LEAVES
             for (Map.Entry<HashSet<PlanNode>, JoinComponent> entry : joinPlans.entrySet()) {
                 HashSet<PlanNode> currUsed = entry.getKey();
                 JoinComponent currBest = entry.getValue();

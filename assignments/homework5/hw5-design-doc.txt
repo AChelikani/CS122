@@ -25,8 +25,8 @@ A3.  Specify any late tokens you are applying to this assignment, or
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith: <>
-    Joon: <>
+    Advith: Subquery Planning
+    Joon: Correlated Evaluation
     Charlie: decorrelation
 
 B:  Subquery Planning
@@ -48,6 +48,13 @@ C:  Correlated Evaluation
 C1.  How easy or difficult was it to incorporate support for correlated
      evaluation into your query planner?  Did it affect the sequence of
      steps in any substantial ways?
+
+     It was easy to incorporate support for correlated evaluation
+     into our query planner. It did not affect the sequence of steps
+     significantly, as all we had to do was to check for subqueries
+     in the WHERE, HAVING, and SELECT clauses after we created plan
+     nodes corresponding to these clauses, and setting the parent
+     environment of those subqueries appropriately.
 
 D:  Decorrelating Queries
 -------------------------
