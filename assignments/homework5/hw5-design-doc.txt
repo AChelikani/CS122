@@ -11,7 +11,7 @@ A1.  List your team name and the people who worked on this assignment.
      Advith Chelikani
      Joon Lee
      Charlie Tong
-     
+
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
@@ -24,6 +24,10 @@ A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith: <>
+    Joon: <>
+    Charlie: decorrelation
 
 B:  Subquery Planning
 ---------------------
@@ -51,13 +55,47 @@ D:  Decorrelating Queries
 D1.  Which example query decorrelation did your team choose to implement?
      Why did you choose this query?
 
+     [NOT] IN / EXISTS (SELECT ...)
+
+     The query is simple to decorrelate, and the implementation for the two are
+     pretty similar. We also wanted to see SEMIJOIN used in optimization.
+
 D2.  How does your planner determine whether a query follows the pattern
      that your planner can decorrelate?  How does it identify the components
      of the query in order to decorrelate it?
 
+     It uses instanceof to check that the expression is of the correct type. We
+     also check that the inner subquery reads from a BASE_TABLE, since we need
+     an alias for the subquery when decorrelating, and it is simpler to just
+     use the table name. We extract the WHERE predicate in the subquery
+     whenever possible; if it is absent then it's equivalent to null.
+
+     The subquery is always in the WHERE clause, so if the WHERE clause matches
+     the type (InSubqueryOperator or ExistsOperator) then we can process it.
+     The other parts are just extracted from the WHERE clause and the SELECT
+     clause. For the IN case, we extract the IN expr (ex. for a IN (...), we
+     need a comparison between a = t2.b). We also extract the first column of
+     the subquery schema (ex. t2.b) so that we can construct an equality
+     comparison. This is then combined with the WHERE predicate in the subquery
+     using a BooleanOperator AND_EXPR.
+
 D3.  Briefly outline the process by which your planner decorrelates the query.
      How does it modify the subquery, and how does it modify the enclosing
      query?
+
+     After verifying that the query is in fact able to be decorrelated, we
+     extract the components as specified in D2 and construct a new FROM clause
+     for the outer SELECT. This then replaces the original FROM clause. The
+     original WHERE clause is also replaced by null.
+
+     While constructing the FROM clause, we take care to set predicates to null
+     after extracting them (i.e. in the subquery), so that the result is in
+     fact decorrelated.
+
+     Thus, the subquery has its predicate removed before being put in the
+     SEMIJOIN/ANTIJOIN. The enclosing query has its WHERE expr (where the
+     subquery used to be) set to null also. The enclosing query's FROM clause
+     is also obviously replaced by the newly constructed decorrelated clause.
 
 E:  Extra Credit [OPTIONAL]
 ---------------------------
@@ -66,12 +104,20 @@ If you implemented any extra-credit tasks for this assignment, describe
 them here.  The description should be like this, with stuff in "<>" replaced.
 (The value i starts at 1 and increments...)
 
-E<i>:  <one-line description>
+E1:  Use CostBasedJoinPlanner in implementation of everything.
 
-     <brief summary of what you did, including the specific classes that
-     we should look at for your implementation>
+     All subquery operations, correlated evaluation, and decorrelation works in
+     the CostBasedJoinPlanner.
 
-     <brief summary of test-cases that demonstrate/exercise your extra work>
+     All tests pass.
+
+E2:  Implement decorrelation for IN, EXISTS, NOT IN, and NOT EXISTS.
+
+     For NOT IN and NOT EXISTS, extract the inner subquery from the
+     BooleanOperator and parse it the same as before. Use an ANTIJOIN instead
+     of a SEMIJOIN.
+
+     All tests pass. EXPLAIN shows the decorrelated execution plan.
 
 F:  Feedback [OPTIONAL]
 -----------------------
