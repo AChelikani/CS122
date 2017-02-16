@@ -16,7 +16,7 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
 
-     Repository URL:  <url>
+     Repository URL:  https://github.com/AChelikani/CS122
      Tag name:        <tag>
      Commit hash:     <hash>
 
@@ -27,7 +27,7 @@ A4.  Briefly describe what parts of the assignment each teammate focused on.
 
     Advith: Subquery Planning
     Joon: Correlated Evaluation
-    Charlie: decorrelation
+    Charlie: Decorrelation
 
 B:  Subquery Planning
 ---------------------
@@ -35,12 +35,29 @@ B:  Subquery Planning
 B1.  Which planner did your team add subquery planning to?  How easy or
      difficult was it to incorporate subquery-planning into the planner?
 
+     Our team added the subquery planning to the cost based planner. It was fairly
+     straight forward to add the subquery planner.
+
 B2.  Briefly outline the process by which you perform subquery planning in
      your query planner.  Also explain briefly how your subquery-planner works.
+
+     We scan the select, where, and having clauses. In the select clause, we
+     check each select value for whether it is an instance of scalar subquery. If
+     it is, we call make plan on the subquery and add it to the plan tree. We then
+     check the where and having clauses for all three cases of subquery, compiling
+     all the instances into a list. We then iterate through this list, calling
+     makePlan on each subquery and adding them to the plan tree.
 
 B3.  Briefly describe how you detect whether there are subqueries in the
      GROUP BY and ORDER BY clauses.  How do you make sure this doesn't
      interfere with subqueries in other clauses?
+
+     We detect subqueries in the group by and order by clauses by retrieving the
+     clauses in lists using the get methods in SelectClause and then looping
+     through the expressions present and checking if any are an instance of the
+     subquery operator. Since we are strictly retrieving the group by and order by
+     clauses, this inherently cannot be affecting subqueries in other clauses of
+     the query.
 
 C:  Correlated Evaluation
 -------------------------
