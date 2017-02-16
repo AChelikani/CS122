@@ -180,28 +180,134 @@ public abstract class AbstractPlannerImpl implements Planner {
     }
 
     /**
+     * Decorrelates the
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ...
+     *   WHERE a [NOT] IN (SELECT ... FROM t2 WHERE b = t1.c)
+     * </pre>
+     * case.
+     *
+     * @param selClause the outer SELECT clause to decorrelate
+     * @param inExpr the IN expression to decorrelate
+     * @param notIn boolean flag for if this is NOT IN
+     * @throws IOException
+     */
+    private void decorrelateInSubquery(SelectClause selClause,
+                                       InSubqueryOperator inExpr,
+                                       boolean notIn) throws IOException {
+        SelectClause subquery = inExpr.getSubquery();
+
+        if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
+            String resultName = subquery.getFromClause().getResultName();
+            JoinType joinType = notIn ? JoinType.ANTIJOIN : JoinType.SEMIJOIN;
+
+            // Predicate starts off as the WHERE expression in the subquery
+            Expression predicate = subquery.getWhereExpr();
+            subquery.setWhereExpr(null);
+
+            // Tack on equality comparison for IN clause (i.e. a = t2.b)
+            Expression lhs = inExpr.expr;
+            Expression rhs = new ColumnValue(subquery.getSchema().getColumnInfo(0).getColumnName());
+            Expression inCompare = new CompareOperator(CompareOperator.Type.EQUALS, lhs, rhs);
+            if (predicate == null) {
+                predicate = inCompare;
+            } else {
+                BooleanOperator combined = new BooleanOperator(BooleanOperator.Type.AND_EXPR);
+                combined.addTerm(predicate);
+                combined.addTerm(inCompare);
+                predicate = combined;
+            }
+
+            // Left and right FROM clauses
+            FromClause fromClause = selClause.getFromClause();
+            FromClause subqueryFromClause = new FromClause(subquery, resultName);
+
+            // SEMIJOIN or ANTIJOIN with ON condition
+            FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, joinType);
+            newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
+            newFromClause.setOnExpression(predicate);
+
+            // Replace FROM clause and WHERE clause
+            selClause.setFromClause(newFromClause);
+            selClause.setWhereExpr(null);
+
+            // Recompute schema
+            selClause.computeSchema(storageManager.getTableManager(), null);
+        }
+    }
+
+    /**
+     * Decorrelates the
+     * <pre>
+     *   SELECT ...
+     *   FROM t1 ...
+     *   WHERE [NOT] EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+     * </pre>
+     * case.
+     *
+     * @param selClause the outer SELECT clause to decorrelate
+     * @param existExpr the EXISTS expression to decorrelate
+     * @param notExists boolean flag for if this is NOT EXISTS
+     * @throws IOException
+     */
+    private void decorrelateExists(SelectClause selClause,
+                                   ExistsOperator existExpr,
+                                   boolean notExists) throws IOException {
+        SelectClause subquery = existExpr.getSubquery();
+
+        if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
+            String resultName = subquery.getFromClause().getResultName();
+            JoinType joinType = notExists ? JoinType.ANTIJOIN : JoinType.SEMIJOIN;
+
+            // Predicate is simply the WHERE expression in the subquery
+            Expression predicate = subquery.getWhereExpr();
+            subquery.setWhereExpr(null);
+
+            // Left and right FROM clauses
+            FromClause fromClause = selClause.getFromClause();
+            FromClause subqueryFromClause = new FromClause(subquery, resultName);
+
+            // SEMIJOIN or ANTIJOIN with ON condition
+            FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, joinType);
+            if (predicate != null) {
+                newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
+                newFromClause.setOnExpression(predicate);
+            }
+
+            // Replace FROM clause and WHERE clause
+            selClause.setFromClause(newFromClause);
+            selClause.setWhereExpr(null);
+
+            // Recompute schema
+            selClause.computeSchema(storageManager.getTableManager(), null);
+        }
+    }
+
+
+    /**
      * Decorrelates two query types. First,
      * <pre>
      *   SELECT ...
      *   FROM t1 ...
-     *   WHERE a IN (SELECT ... FROM t2 WHERE b = t1.c)
+     *   WHERE a [NOT] IN (SELECT ... FROM t2 WHERE b = t1.c)
      * </pre>
      * is decorrelated into:
      * <pre>
      *   SELECT ...
-     *   FROM t1 ... LEFT SEMIJOIN (SELECT ... FROM t2)
+     *   FROM t1 ... LEFT SEMIJOIN[ANTIJOIN] (SELECT ... FROM t2)
      *   ON b = t1.c AND a = ...
      * </pre>
      * Second,
      * <pre>
      *   SELECT ...
      *   FROM t1 ...
-     *   WHERE EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+     *   WHERE [NOT] EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
      * </pre>
      * is decorrelated into:
      * <pre>
      *   SELECT ...
-     *   FROM t1 ... LEFT SEMIJOIN (SELECT ... FROM t2)
+     *   FROM t1 ... LEFT SEMIJOIN[ANTIJOIN] (SELECT ... FROM t2)
      *   ON t2.a = t1.b
      * </pre>
      *
@@ -209,84 +315,38 @@ public abstract class AbstractPlannerImpl implements Planner {
      * BASE_TABLE, since the decorrelated query requires an alias for the
      * nested SELECT. Rather than use a placeholder, we just use the table name.
      *
+     * This method modifies the selClause in place.
+     *
      * @param selClause the SELECT clause AST to decorrelate
      * @throws IOException
      */
     protected void decorrelate(SelectClause selClause) throws IOException {
         Expression whereExpr = selClause.getWhereExpr();
 
-        // SELECT ... FROM t1 ... WHERE a IN (SELECT ... FROM t2 WHERE b = t1.c)
         if (whereExpr instanceof InSubqueryOperator) {
-            SelectClause subquery = ((InSubqueryOperator) whereExpr).getSubquery();
-
-            if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
-                String resultName = subquery.getFromClause().getResultName();
-                Expression predicate;
-
-                // Tack on subquery WHERE expression
-                predicate = subquery.getWhereExpr();
-                subquery.setWhereExpr(null);
-
-                // Tack on equality comparison for IN
-                Expression lhs = ((InSubqueryOperator) whereExpr).expr;
-                Expression rhs = new ColumnValue(subquery.getSchema().getColumnInfo(0).getColumnName());
-                Expression inCompare = new CompareOperator(CompareOperator.Type.EQUALS, lhs, rhs);
-                if (predicate == null) {
-                    predicate = inCompare;
-                } else {
-                    BooleanOperator combined = new BooleanOperator(BooleanOperator.Type.AND_EXPR);
-                    combined.addTerm(predicate);
-                    combined.addTerm(inCompare);
-                    predicate = combined;
-                }
-
-                // Left and right FROM clauses
-                FromClause fromClause = selClause.getFromClause();
-                FromClause subqueryFromClause = new FromClause(subquery, resultName);
-
-                // SEMIJOIN with ON condition
-                FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, JoinType.SEMIJOIN);
-                newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
-                newFromClause.setOnExpression(predicate);
-
-                // Replace FROM clause and WHERE clause
-                selClause.setFromClause(newFromClause);
-                selClause.setWhereExpr(null);
-
-                // Recompute schema
-                selClause.computeSchema(storageManager.getTableManager(), null);
-            }
+            // SELECT ... FROM t1 ... WHERE a IN (SELECT ... FROM t2 WHERE b = t1.c)
+            decorrelateInSubquery(selClause, (InSubqueryOperator) whereExpr, false);
         }
 
-        // SELECT ... FROM t1 ... WHERE EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
-        if (whereExpr instanceof ExistsOperator) {
-            SelectClause subquery = ((ExistsOperator) whereExpr).getSubquery();
-
-            if (subquery.getFromClause().getClauseType() == FromClause.ClauseType.BASE_TABLE) {
-                String resultName = subquery.getFromClause().getResultName();
-                Expression subWhereExpr = subquery.getWhereExpr();
-                subquery.setWhereExpr(null);
-
-                // Left and right FROM clauses
-                FromClause fromClause = selClause.getFromClause();
-                FromClause subqueryFromClause = new FromClause(subquery, resultName);
-
-                // SEMIJOIN with ON condition
-                FromClause newFromClause = new FromClause(fromClause, subqueryFromClause, JoinType.SEMIJOIN);
-                if (subWhereExpr != null) {
-                    newFromClause.setConditionType(FromClause.JoinConditionType.JOIN_ON_EXPR);
-                    newFromClause.setOnExpression(subWhereExpr);
-                }
-
-                // Replace FROM clause and WHERE clause
-                selClause.setFromClause(newFromClause);
-                selClause.setWhereExpr(null);
-
-                // Recompute schema
-                selClause.computeSchema(storageManager.getTableManager(), null);
-            }
+        else if (whereExpr instanceof ExistsOperator) {
+            // SELECT ... FROM t1 ... WHERE EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+            decorrelateExists(selClause, (ExistsOperator) whereExpr, false);
         }
 
+        else if (whereExpr instanceof BooleanOperator &&
+                ((BooleanOperator) whereExpr).getType() == BooleanOperator.Type.NOT_EXPR) {
+            // Extract inner expression and check if we can decorrelate it
+            Expression expr = ((BooleanOperator) whereExpr).getTerm(0);
 
+            if (expr instanceof  InSubqueryOperator) {
+                // SELECT ... FROM t1 ... WHERE a NOT IN (SELECT ... FROM t2 WHERE b = t1.c)
+                decorrelateInSubquery(selClause, (InSubqueryOperator) expr, true);
+            }
+
+            else if (expr instanceof  ExistsOperator) {
+                // SELECT ... FROM t1 ... WHERE NOT EXISTS (SELECT ... FROM t2 WHERE a = t1.b)
+                decorrelateExists(selClause, (ExistsOperator) expr, true);
+            }
+        }
     }
 }
