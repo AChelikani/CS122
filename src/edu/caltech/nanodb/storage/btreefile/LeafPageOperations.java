@@ -768,8 +768,58 @@ public class LeafPageOperations {
          * The parent page must also be updated.  If the leaf node doesn't have
          * a parent, the tree's depth will increase by one level.
          */
-        logger.error("NOT YET IMPLEMENTED:  splitLeafAndAddKey()");
-        return null;
+
+        // Chain leaves together
+        newLeaf.setNextPageNo(leaf.getNextPageNo());
+        leaf.setNextPageNo(newLeaf.getPageNo());
+
+        // Determine number of tuples in left leaf to move to new (right) leaf,
+        // and which leaf the new tuple belongs in.
+        int numTuplesToMove = (leaf.getNumTuples() - 1) / 2;
+        boolean insertLeft = false;
+        Tuple middleTuple = leaf.getTuple(leaf.getNumTuples() / 2);
+
+        // If new tuple belongs in left leaf, move one more tuple to the right leaf.
+        if (TupleComparator.comparePartialTuples(tuple, middleTuple) < 0) {
+            numTuplesToMove += 1;
+            insertLeft = true;
+        }
+
+        // Move appropriate tuples to the new leaf
+        leaf.moveTuplesRight(newLeaf, numTuplesToMove);
+
+        // Insert new tuple into appropriate leaf
+        BTreeFilePageTuple newBTreeTuple;
+        if (insertLeft) {
+            newBTreeTuple = leaf.addTuple(tuple);
+        }
+        else {
+            newBTreeTuple = newLeaf.addTuple(tuple);
+        }
+
+        pagePath.remove(pathSize - 1); // Get pagePath to parent
+        Tuple newKey = newLeaf.getTuple(0);
+
+        // If leaf has was root, we need to create a new root node.
+        if (pagePath.isEmpty()) {
+            DBPage newRootDBPage = fileOps.getNewDataPage();
+            InnerPage.init(newRootDBPage, tupleFile.getSchema(), leaf.getPageNo(), newKey,
+                    newLeaf.getPageNo());
+            pagePath.add(newRootDBPage.getPageNo());
+            // Update root page number in header page
+            DBPage dbpHeader = storageManager.loadDBPage(tupleFile.getDBFile(), 0);
+            HeaderPage.setRootPageNo(dbpHeader, newRootDBPage.getPageNo());
+        }
+        // Otherwise, add newKey to parent InnerPage.
+        else {
+            InnerPage parentInnerPage = innerPageOps.loadPage(pagePath.get(pathSize - 2));
+            innerPageOps.addTuple(parentInnerPage, pagePath, leaf.getPageNo(), newKey,
+                    newLeaf.getPageNo());
+        }
+
+        // Restore pagePath
+        pagePath.add(leaf.getPageNo());
+        return newBTreeTuple;
     }
 
 
