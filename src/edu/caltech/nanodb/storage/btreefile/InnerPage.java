@@ -732,13 +732,44 @@ public class InnerPage implements DataPage {
          * Your implementation also needs to properly handle the incoming
          * parent-key, and produce a new parent-key as well.
          */
-        logger.error("NOT YET IMPLEMENTED:  movePointersLeft()");
+
+        TupleLiteral newParentKey = new TupleLiteral(getKey(count - 1));
+
+        int moveEndOffset = pointerOffsets[count - 1] + 2;
+        int len = moveEndOffset - OFFSET_FIRST_POINTER;
+
+        if (parentKey != null) {
+            // Store parent key in between new and old pointers in the left sibling
+            PageTuple.storeTuple(leftSibling.dbPage, leftSibling.endOffset, schema, parentKey);
+        }
+
+        // Copy the pointer-data across
+        leftSibling.dbPage.write(leftSibling.endOffset + parentKeyLen, dbPage.getPageData(),
+                OFFSET_FIRST_POINTER, len);
+
+        // Update the pointer-count
+        leftSibling.dbPage.writeShort(OFFSET_NUM_POINTERS, leftSibling.numPointers + count);
+
+        // Remove that range of pointer-data from this page.
+        // deleteEndOffset and deleteLen include the key tuple that
+        // will be moved to the parent node.
+        int deleteEndOffset = pointerOffsets[count];
+        int deleteLen = deleteEndOffset - OFFSET_FIRST_POINTER;
+
+        dbPage.moveDataRange(deleteEndOffset, OFFSET_FIRST_POINTER,
+                endOffset - deleteEndOffset);
+        dbPage.writeShort(OFFSET_NUM_POINTERS, numPointers - count);
+
+        // Only erase the old data in the leaf page if we are trying to make
+        // sure everything works properly.
+        if (BTreeTupleFile.CLEAR_OLD_DATA)
+            dbPage.setDataRange(endOffset - deleteLen, deleteLen, (byte) 0);
 
         // Update the cached info for both non-leaf pages.
         loadPageContents();
         leftSibling.loadPageContents();
 
-        return null;
+        return newParentKey;
     }
 
 
@@ -947,7 +978,37 @@ public class InnerPage implements DataPage {
          * Your implementation also needs to properly handle the incoming
          * parent-key, and produce a new parent-key as well.
          */
-        logger.error("NOT YET IMPLEMENTED:  movePointersRight()");
+
+        // Retrieve new parent key, which is the key right before the
+        // first moved pointer.
+        TupleLiteral newParentKey = new TupleLiteral(getKey(getNumKeys() - count));
+
+        // If parentKey == null, rightSibling does not contain any pointers.
+        if (parentKey != null) {
+            // Make room for the data
+            rightSibling.dbPage.moveDataRange(OFFSET_FIRST_POINTER,
+                    OFFSET_FIRST_POINTER + len + parentKeyLen,
+                    rightSibling.endOffset - OFFSET_FIRST_POINTER);
+
+            // Store parent key in between new and old pointers in right sibling
+            PageTuple.storeTuple(rightSibling.dbPage,
+                    OFFSET_FIRST_POINTER + len, schema, parentKey);
+        }
+
+        // Copy the pointer-data across
+        rightSibling.dbPage.write(OFFSET_FIRST_POINTER, dbPage.getPageData(),
+                startOffset, len);
+
+        // Update the pointer-count
+        rightSibling.dbPage.writeShort(OFFSET_NUM_POINTERS, rightSibling.numPointers + count);
+
+        // Remove that range of pointer-data from this page.
+        dbPage.writeShort(OFFSET_NUM_POINTERS, numPointers - count);
+
+        // Only erase the old data in the leaf page if we are trying to make
+        // sure everything works properly.
+        if (BTreeTupleFile.CLEAR_OLD_DATA)
+            dbPage.setDataRange(startOffset, len, (byte) 0);
 
         // Update the cached info for both non-leaf pages.
         loadPageContents();
@@ -962,7 +1023,7 @@ public class InnerPage implements DataPage {
                 rightSibling.toFormattedString());
         }
 
-        return null;
+        return newParentKey;
     }
 
 
