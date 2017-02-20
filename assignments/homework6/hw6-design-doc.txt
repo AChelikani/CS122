@@ -6,11 +6,11 @@ A:  Logistics
 
 A1.  List your team name and the people who worked on this assignment.
 
-     <team name>
+     sqLIT
 
-     <name>
-     <name>
-     ...
+     Advith Chelikani
+     Joon Lee
+     Charlie Tong
 
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
@@ -23,7 +23,13 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
+     None
+
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith:
+    Joon: Complete Missing B+ Tree Operations
+    Charlie:
 
 B:  Analysis of Implementation
 ------------------------------
@@ -69,7 +75,9 @@ B5.  In this implementation, nodes do not store a page-pointer to their
      from root to leaf.  If a node must be split, or if entries are to be
      relocated from a node to its siblings, the node’s parent-node must
      be retrieved, and the parent’s contents must be scanned to determine
-     the node’s sibling(s).     Consider an alternate B+ tree implementation in which every node
+     the node’s sibling(s).
+
+     Consider an alternate B+ tree implementation in which every node
      stores a page-pointer to the node’s parent.  In the case of splitting
      an inner node, what performance-related differences are there between
      this alternate representation and the given implementation, where
@@ -78,8 +86,17 @@ B5.  In this implementation, nodes do not store a page-pointer to their
 
 B6.  It should be obvious how indexes can be used to enforce primary keys,
      but what role might they play with foreign keys?  For example, given
-     this schema:     CREATE TABLE t1 (         id INTEGER PRIMARY KEY     );     CREATE TABLE t2 (         id INTEGER REFERENCES t1;     );
-     Why might we want to build an index on t2.id?
+     this schema:
+
+     CREATE TABLE t1 (
+         id INTEGER PRIMARY KEY
+     );
+
+     CREATE TABLE t2 (
+         id INTEGER REFERENCES t1;
+     );
+
+     Why might we want to build an index on t2.id?
 
 E:  Extra Credit [OPTIONAL]
 ---------------------------
