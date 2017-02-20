@@ -136,15 +136,14 @@ public class IndexUpdater implements RowEventListener {
                 // Helpful: IndexUtils.findTupleIndex()
 
                 // Make sure to not violate unique constraints
-                // Check for existance of tuple
-                boolean unique = indexDef.getConstraintType().isUnique();
-                if (unique) {
+                // Check for existence of tuple
+                if (indexDef.getConstraintType().isUnique()) {
                     // False arg since we we don't need to check pointer equivalence
                     TupleLiteral checkTup = IndexUtils.makeTableSearchKey(indexDef, ptup, false);
                     // Check for tuple with same values
                     if (IndexUtils.findTupleInIndex(checkTup, indexInfo.getTupleFile()) != null) {
                         // Tuple already exists
-                        throw new IllegalArgumentException("Tuple already exist!");
+                        throw new IllegalArgumentException("Tuple already exists!");
                     }
                 }
 
@@ -193,7 +192,8 @@ public class IndexUpdater implements RowEventListener {
 
                 // No tuple to delete so throw error
                 if (delTup == null) {
-                    throw new IllegalStateException("Index is bad.");
+                    throw new IllegalStateException("Index " + indexDef.getIndexName() +
+                            " in table " + tblFileInfo.getTableName() + " does not contain tuple");
                 }
 
                 // Otherwise remove tuple
