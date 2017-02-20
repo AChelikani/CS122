@@ -5,6 +5,7 @@ import java.io.IOException;
 
 import org.apache.log4j.Logger;
 
+import edu.caltech.nanodb.indexes.IndexUtils;
 import edu.caltech.nanodb.expressions.TupleLiteral;
 import edu.caltech.nanodb.relations.ColumnRefs;
 import edu.caltech.nanodb.relations.TableConstraintType;
@@ -125,14 +126,32 @@ public class IndexUpdater implements RowEventListener {
                 IndexInfo indexInfo = indexManager.openIndex(tblFileInfo,
                     indexDef.getIndexName());
 
-                // TODO:  Implement!
-                //
                 // If the index is a unique index, then verify that there
                 // isn't already a tuple in the index with the same values
                 // (excluding the tuple-pointer column, of course).
                 //
                 // Finally, add a new tuple to the index, including the
                 // tuple-pointer to the tuple in the table.
+                // Helpful: IndexUtils.makeTableSearchKey()
+                // Helpful: IndexUtils.findTupleIndex()
+
+                // Make sure to not violate unique constraints
+                // Check for existance of tuple
+                boolean unique = indexDef.getConstraintType().isUnique();
+                if (unique) {
+                    // False arg since we we don't need to check pointer equivalence
+                    TupleLiteral checkTup = IndexUtils.makeTableSearchKey(indexDef, ptup, false);
+                    // Check for tuple with same values
+                    if (IndexUtils.findTupleInIndex(checkTup, indexInfo.getTupleFile()) != null) {
+                        // Tuple already exists
+                        throw new IllegalArgumentException("Tuple already exist!");
+                    }
+                }
+
+                // Create and add to index
+                TupleLiteral tup = IndexUtils.makeTableSearchKey(indexDef, ptup, true);
+                indexInfo.getTupleFile().addTuple(tup);
+
             }
             catch (IOException e) {
                 throw new EventDispatchException("Couldn't update index " +
@@ -164,13 +183,22 @@ public class IndexUpdater implements RowEventListener {
                 IndexInfo indexInfo = indexManager.openIndex(tblFileInfo,
                     indexDef.getIndexName());
 
-                // TODO:  Implement!
-                //
                 // Find and remove the entry in this index, corresponding to
                 // the passed-in tuple.
                 //
                 // If the tuple doesn't appear in this index, throw an
                 // IllegalStateException to indicate that the index is bad.
+                TupleLiteral tup = IndexUtils.makeTableSearchKey(indexDef, ptup, true);
+                PageTuple delTup = IndexUtils.findTupleInIndex(tup, indexInfo.getTupleFile());
+
+                // No tuple to delete so throw error
+                if (delTup == null) {
+                    throw new IllegalStateException("Index is bad.");
+                }
+
+                // Otherwise remove tuple
+                indexInfo.getTupleFile().deleteTuple(delTup);
+
             }
             catch (IOException e) {
                 throw new EventDispatchException("Couldn't update index " +
