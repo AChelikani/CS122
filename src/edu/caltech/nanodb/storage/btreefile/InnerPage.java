@@ -733,7 +733,11 @@ public class InnerPage implements DataPage {
          * parent-key, and produce a new parent-key as well.
          */
 
-        TupleLiteral newParentKey = new TupleLiteral(getKey(count - 1));
+        // If all tuples are being moved, then there is no valid new parent key.
+        TupleLiteral newParentKey = null;
+        if (count - 1 < getNumKeys()) {
+            newParentKey = new TupleLiteral(getKey(count - 1));
+        }
 
         int moveEndOffset = pointerOffsets[count - 1] + 2;
         int len = moveEndOffset - OFFSET_FIRST_POINTER;
@@ -980,8 +984,12 @@ public class InnerPage implements DataPage {
          */
 
         // Retrieve new parent key, which is the key right before the
-        // first moved pointer.
-        TupleLiteral newParentKey = new TupleLiteral(getKey(getNumKeys() - count));
+        // first moved pointer. However, if all tuples are being moved, then
+        // there is no valid new parent key.
+        TupleLiteral newParentKey = null;
+        if (getNumKeys() - count >= 0) {
+            newParentKey = new TupleLiteral(getKey(getNumKeys() - count));
+        }
 
         // If parentKey == null, rightSibling does not contain any pointers.
         if (parentKey != null) {

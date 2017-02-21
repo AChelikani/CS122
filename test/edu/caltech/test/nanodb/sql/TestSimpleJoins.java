@@ -26,25 +26,25 @@ public class TestSimpleJoins extends SqlTestCase {
      */
     public void testInnerJoin() throws Throwable {
         String query1 =
-                "SELECT * FROM " +
+                "SELECT t1.a, b, t2.a, c FROM " +
                     "test_simple_joins_left_empty AS t1 " +
                         "INNER JOIN " +
                     "test_simple_joins_right      AS t2 " +
                 "ON t1.a = t2.a";
         String query2 =
-                "SELECT * FROM " +
+                "SELECT t1.a, b, t2.a, c FROM " +
                     "test_simple_joins_left        AS t1 " +
                         "INNER JOIN " +
                     "test_simple_joins_right_empty AS t2 " +
                 "ON t1.a = t2.a";
         String query3 =
-                "SELECT * FROM " +
+                "SELECT t1.a, b, t2.a, c FROM " +
                     "test_simple_joins_left_empty  AS t1 " +
                         "INNER JOIN " +
                     "test_simple_joins_right_empty AS t2 " +
                 "ON t1.a = t2.a";
         String query4 =
-                "SELECT * FROM " +
+                "SELECT t1.a, b, t2.a, c FROM " +
                     "test_simple_joins_left  AS t1 " +
                         "INNER JOIN " +
                     "test_simple_joins_right AS t2 " +
