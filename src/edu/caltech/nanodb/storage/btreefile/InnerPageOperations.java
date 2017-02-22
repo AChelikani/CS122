@@ -406,69 +406,81 @@ public class InnerPageOperations {
             leftSibling.getUsedSpace() + page.getSpaceUsedByEntries() <
             leftSibling.getTotalSpace()) {
 
-            // Coalesce the current node into the left sibling.
-            logger.debug("Delete from inner page " + pageNo +
-                ":  coalescing with left sibling page.");
-
-            logger.debug(String.format("Before coalesce-left, page has %d " +
-                "pointers and left sibling has %d pointers.",
-                page.getNumPointers(), leftSibling.getNumPointers()));
-
             // The affected key in the parent page is to the left of this
             // page's index in the parent page, since we are moving entries
             // to the left sibling.
             Tuple parentKey = parentPage.getKey(indexInParentPage - 1);
+            int parentKeyLen = PageTuple.getTupleStorageSize(tupleFile.getSchema(), parentKey);
 
-            // We don't care about the key returned by movePointersLeft(),
-            // since we are deleting the parent key anyway.
-            page.movePointersLeft(leftSibling, page.getNumPointers(), parentKey);
+            if (leftSibling.getUsedSpace() + page.getSpaceUsedByEntries() + parentKeyLen <
+                    leftSibling.getTotalSpace()) {
+                // Coalesce the current node into the left sibling.
+                logger.debug("Delete from inner page " + pageNo +
+                    ":  coalescing with left sibling page.");
 
-            logger.debug(String.format("After coalesce-left, page has %d " +
-                "pointers and left sibling has %d pointers.",
-                page.getNumPointers(), leftSibling.getNumPointers()));
+                logger.debug(String.format("Before coalesce-left, page has %d " +
+                    "pointers and left sibling has %d pointers.",
+                    page.getNumPointers(), leftSibling.getNumPointers()));
 
-            // Free up the page since it's empty now
-            fileOps.releaseDataPage(page.getDBPage());
-            page = null;
+                // We don't care about the key returned by movePointersLeft(),
+                // since we are deleting the parent key anyway.
+                page.movePointersLeft(leftSibling, page.getNumPointers(), parentKey);
 
-            List<Integer> parentPagePath = pagePath.subList(0, pagePath.size() - 1);
-            deletePointer(parentPage, parentPagePath, pageNo,
+                logger.debug(String.format("After coalesce-left, page has %d " +
+                    "pointers and left sibling has %d pointers.",
+                    page.getNumPointers(), leftSibling.getNumPointers()));
+
+                // Free up the page since it's empty now
+                fileOps.releaseDataPage(page.getDBPage());
+                page = null;
+
+                List<Integer> parentPagePath = pagePath.subList(0, pagePath.size() - 1);
+                deletePointer(parentPage, parentPagePath, pageNo,
                 /* delete right key */ false);
+                return;
+            }
         }
-        else if (rightSibling != null &&
+
+        if (rightSibling != null &&
                 rightSibling.getUsedSpace() + page.getSpaceUsedByEntries() <
                         rightSibling.getTotalSpace()) {
-
-            // Coalesce the current node into the right sibling.
-            logger.debug("Delete from leaf " + pageNo +
-                    ":  coalescing with right sibling leaf.");
-
-            logger.debug(String.format("Before coalesce-right, page has %d " +
-                    "keys and right sibling has %d pointers.",
-                    page.getNumPointers(), rightSibling.getNumPointers()));
 
             // The affected key in the parent page is to the right of this
             // page's index in the parent page, since we are moving entries
             // to the right sibling.
             Tuple parentKey = parentPage.getKey(indexInParentPage);
+            int parentKeyLen = PageTuple.getTupleStorageSize(tupleFile.getSchema(), parentKey);
 
-            // We don't care about the key returned by movePointersRight(),
-            // since we are deleting the parent key anyway.
-            page.movePointersRight(rightSibling, page.getNumPointers(), parentKey);
+            if (rightSibling.getUsedSpace() + page.getSpaceUsedByEntries() + parentKeyLen <
+                        rightSibling.getTotalSpace()) {
+                // Coalesce the current node into the right sibling.
+                logger.debug("Delete from leaf " + pageNo +
+                        ":  coalescing with right sibling leaf.");
 
-            logger.debug(String.format("After coalesce-right, page has %d " +
-                    "entries and right sibling has %d pointers.",
-                    page.getNumPointers(), rightSibling.getNumPointers()));
+                logger.debug(String.format("Before coalesce-right, page has %d " +
+                        "keys and right sibling has %d pointers.",
+                        page.getNumPointers(), rightSibling.getNumPointers()));
 
-            // Free up the right page since it's empty now
-            fileOps.releaseDataPage(page.getDBPage());
-            page = null;
+                // We don't care about the key returned by movePointersRight(),
+                // since we are deleting the parent key anyway.
+                page.movePointersRight(rightSibling, page.getNumPointers(), parentKey);
 
-            List<Integer> parentPagePath = pagePath.subList(0, pagePath.size() - 1);
-            deletePointer(parentPage, parentPagePath, pageNo,
+                logger.debug(String.format("After coalesce-right, page has %d " +
+                        "entries and right sibling has %d pointers.",
+                        page.getNumPointers(), rightSibling.getNumPointers()));
+
+                // Free up the right page since it's empty now
+                fileOps.releaseDataPage(page.getDBPage());
+                page = null;
+
+                List<Integer> parentPagePath = pagePath.subList(0, pagePath.size() - 1);
+                deletePointer(parentPage, parentPagePath, pageNo,
                 /* delete right key */ true);
+                return;
+            }
         }
-        else {
+
+        {
             // Can't coalesce the leaf node into either sibling.  Redistribute
             // entries from left or right sibling into the leaf.  The strategy
             // is as follows:
@@ -543,12 +555,12 @@ public class InnerPageOperations {
                     (adjPage == leftSibling ? "left" : "right"), adjPage.getPageNo()));
 
             if (adjPage == leftSibling) {
-                adjPage.movePointersRight(page, entriesToMove, parentKey);
-                parentPage.replaceTuple(indexInParentPage - 1, page.getKey(0));
+                TupleLiteral newParentTuple = adjPage.movePointersRight(page, entriesToMove, parentKey);
+                parentPage.replaceTuple(indexInParentPage - 1, newParentTuple);
             }
             else { // adjPage == right sibling
-                adjPage.movePointersLeft(page, entriesToMove, parentKey);
-                parentPage.replaceTuple(indexInParentPage, adjPage.getKey(0));
+                TupleLiteral newParentTuple = adjPage.movePointersLeft(page, entriesToMove, parentKey);
+                parentPage.replaceTuple(indexInParentPage, newParentTuple);
             }
         }
     }
@@ -926,17 +938,12 @@ public class InnerPageOperations {
         pageBytesFree -= parentKeySize;
 
         int keyBytesMoved = 0;
-        int lastKeySize = parentKeySize;
+        int lastKeySize;
+        int numRelocated = 1;  // Start at 1 since we included the parent key.
 
-        int numRelocated = 0;
-        while (true) {
-            // If the key we wanted to move into this page overflows the free
-            // space in this page, back it up.
-            // TODO:  IS THIS NECESSARY?
-            if (pageBytesFree < keyBytesMoved + 2 * numRelocated) {
-                numRelocated--;
-                break;
-            }
+        // Loop while sibling is still at least 1/2 full and this node is not.
+        while (adjBytesFree + keyBytesMoved + 2 * numRelocated <= halfFull &&
+                (pageBytesFree - keyBytesMoved - 2 * numRelocated) > halfFull) {
 
             // Figure out the index of the key we need the size of, based on the
             // direction we are moving values.  If we are moving values right,
@@ -944,23 +951,23 @@ public class InnerPageOperations {
             // are moving values left, we need to start with the leftmost key.
             int index;
             if (movingRight)
-                index = adjKeys - numRelocated - 1;
+                index = adjKeys - numRelocated;
             else
-                index = numRelocated;
-
-            keyBytesMoved += lastKeySize;
+                index = numRelocated - 1;
 
             lastKeySize = adjPage.getKey(index).getSize();
             logger.debug("Key " + index + " is " + lastKeySize + " bytes");
 
             numRelocated++;
+            keyBytesMoved += lastKeySize;
+        }
 
-            // Since we don't yet know which page the new pointer will go into,
-            // stop when we can put the pointer in either page.
-            if (adjBytesFree <= halfFull &&
-                (pageBytesFree + keyBytesMoved + 2 * numRelocated) <= halfFull) {
-                break;
-            }
+        // If the key we wanted to move into this page overflows the free
+        // space in this page, back it up.
+        // TODO:  IS THIS NECESSARY?
+        if (pageBytesFree < keyBytesMoved + 2 * numRelocated) {
+            logger.debug("Overflowed, backing it up.");
+            numRelocated--;
         }
 
         logger.debug("Can relocate " + numRelocated +

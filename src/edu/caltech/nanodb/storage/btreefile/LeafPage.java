@@ -352,7 +352,8 @@ public class LeafPage implements DataPage {
      * @return the page number of the right sibling leaf-node, or -1 if there
      *         is no right sibling
      */
-    public int getRightSibling(List<Integer> pagePath) throws IOException {
+    public int getRightSibling(List<Integer> pagePath,
+                               InnerPageOperations innerOps) throws IOException {
 
         // Verify that the last node in the page path is in fact this page.
         if (pagePath.get(pagePath.size() - 1) != getPageNo()) {
@@ -360,9 +361,28 @@ public class LeafPage implements DataPage {
                 "The page path provided does not terminate on this leaf page.");
         }
 
-        int rightSiblingPageNo = getNextPageNo();
-        if (rightSiblingPageNo == 0)
-            rightSiblingPageNo = -1;
+        // If this leaf doesn't have a parent, we already know it doesn't
+        // have a sibling.
+        if (pagePath.size() <= 1)
+            return -1;
+
+        int parentPageNo = pagePath.get(pagePath.size() - 2);
+        InnerPage inner = innerOps.loadPage(parentPageNo);
+
+        // Get the index of the pointer that points to this page.  If it
+        // doesn't appear in the parent, we have a serious problem...
+        int pageIndex = inner.getIndexOfPointer(getPageNo());
+        if (pageIndex == -1) {
+            throw new IllegalStateException(String.format(
+                    "Leaf node %d doesn't appear in parent inner node %d!",
+                    getPageNo(), parentPageNo));
+        }
+
+        int rightSiblingIndex = pageIndex + 1;
+        int rightSiblingPageNo = -1;
+
+        if (rightSiblingIndex < inner.getNumPointers())
+            rightSiblingPageNo = inner.getPointer(rightSiblingIndex);
 
         return rightSiblingPageNo;
     }

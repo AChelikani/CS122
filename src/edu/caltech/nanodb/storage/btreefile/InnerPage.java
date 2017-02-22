@@ -471,6 +471,20 @@ public class InnerPage implements DataPage {
         return -1;
     }
 
+    /**
+     * Checks to see if there is enough free space for the tuple to be replaced.
+     * @param index index of tuple to replace
+     * @param key new tuple to replace it with
+     * @return true if the new tuple will fit, false otherwise
+     */
+    public boolean canReplaceTuple(int index, Tuple key) {
+        int oldStart = keys[index].getOffset();
+        int oldLen = keys[index].getEndOffset() - oldStart;
+
+        int newLen = PageTuple.getTupleStorageSize(schema, key);
+
+        return endOffset + newLen - oldLen <= dbPage.getPageSize();
+    }
 
     public void replaceTuple(int index, Tuple key) {
         int oldStart = keys[index].getOffset();
@@ -757,7 +771,7 @@ public class InnerPage implements DataPage {
         // Remove that range of pointer-data from this page.
         // deleteEndOffset and deleteLen include the key tuple that
         // will be moved to the parent node.
-        int deleteEndOffset = pointerOffsets[count];
+        int deleteEndOffset = count >= numPointers ? endOffset : pointerOffsets[count];
         int deleteLen = deleteEndOffset - OFFSET_FIRST_POINTER;
 
         dbPage.moveDataRange(deleteEndOffset, OFFSET_FIRST_POINTER,
@@ -772,6 +786,15 @@ public class InnerPage implements DataPage {
         // Update the cached info for both non-leaf pages.
         loadPageContents();
         leftSibling.loadPageContents();
+
+        if (logger.isTraceEnabled()) {
+            logger.trace("Non-leaf page " + getPageNo() +
+                    " contents after moving pointers left:\n" + toFormattedString());
+
+            logger.trace("Left-sibling page " + leftSibling.getPageNo() +
+                    " contents after moving pointers left:\n" +
+                    leftSibling.toFormattedString());
+        }
 
         return newParentKey;
     }

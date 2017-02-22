@@ -139,7 +139,7 @@ public class LeafPageOperations {
         // Leaf pages know their right sibling, so that's why finding the
         // right page doesn't require the innerPageOps object.
         int leftPageNo = leaf.getLeftSibling(pagePath, innerPageOps);
-        int rightPageNo = leaf.getRightSibling(pagePath);
+        int rightPageNo = leaf.getRightSibling(pagePath, innerPageOps);
 
         logger.debug(String.format("Leaf page %d is too empty.  Left " +
             "sibling is %d, right sibling is %d.", leafPageNo, leftPageNo,
@@ -219,7 +219,7 @@ public class LeafPageOperations {
         }
         else if (rightSibling != null &&
                  rightSibling.getUsedSpace() + leaf.getSpaceUsedByTuples() <
-                 rightSibling.getTotalSpace()) {
+                 leaf.getTotalSpace()) {
 
             // Coalesce the current node into the right sibling.
             logger.debug("Delete from leaf " + leaf.getPageNo() +
@@ -236,22 +236,18 @@ public class LeafPageOperations {
                 // the right sibling's tuples.
                 BTreeFilePageTuple btpt = (BTreeFilePageTuple) tuple;
                 int index = btpt.getNextTupleIndex();
-                btpt.setNextTuplePosition(rightPageNo, index);
+                btpt.setNextTuplePosition(leafPageNo, index);
             }
 
-            leaf.moveTuplesRight(rightSibling, leaf.getNumTuples());
-
-            // Left sibling can be null if leaf is the first leaf node in the
-            // sequence of the btree.
-            if (leftSibling != null)
-                leftSibling.setNextPageNo(rightPageNo);
+            rightSibling.moveTuplesLeft(leaf, rightSibling.getNumTuples());
+            leaf.setNextPageNo(rightSibling.getNextPageNo());
 
             logger.debug(String.format("After coalesce-right, page has %d " +
                 "tuples and right sibling has %d tuples.",
                 leaf.getNumTuples(), rightSibling.getNumTuples()));
 
             // Free up the leaf page since it's empty now
-            fileOps.releaseDataPage(leaf.getDBPage());
+            fileOps.releaseDataPage(rightSibling.getDBPage());
 
             // Since the leaf page has been removed from the index structure,
             // we need to remove it from the parent page.  Also, since the
@@ -262,8 +258,8 @@ public class LeafPageOperations {
                 innerPageOps.loadPage(pagePath.get(pagePath.size() - 2));
 
             List<Integer> parentPagePath = pagePath.subList(0, pagePath.size() - 1);
-            innerPageOps.deletePointer(parent, parentPagePath, leafPageNo,
-                /* remove right tuple */ true);
+            innerPageOps.deletePointer(parent, parentPagePath, rightPageNo,
+                /* remove right tuple */ false);
         }
         else {
             // Can't coalesce the leaf node into either sibling.  Redistribute
@@ -326,6 +322,30 @@ public class LeafPageOperations {
                 logger.warn(buf);
 
                 return;
+            }
+
+            {
+                // Check that the parent can actually fit the new tuple.
+
+                InnerPage parent = innerPageOps.loadPage(pagePath.get(pagePath.size() - 2));
+                int index;
+                Tuple key;
+
+                if (adjPage == leftSibling) {
+                    index = parent.getIndexOfPointer(adjPage.getPageNo());
+                    key = adjPage.getTuple(adjPage.getNumTuples() - tuplesToMove);
+                }
+                else { // adjPage == right sibling
+                    index = parent.getIndexOfPointer(leaf.getPageNo());
+                    key = adjPage.getTuple(tuplesToMove);
+                }
+
+                if (!parent.canReplaceTuple(index, key)) {
+                    logger.warn(String.format("Parent %d did not have enough space " +
+                            "to relocate tuples for node %d.",
+                            parent.getPageNo(), leafPageNo));
+                    return;
+                }
             }
 
             logger.debug(String.format("Relocating %d tuples into leaf page " +
