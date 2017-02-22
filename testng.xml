@@ -89,7 +89,6 @@
     </classes>
   </test>
 
-  <!--
   <test name="btree-delete-tests">
     <classes>
       <class name="edu.caltech.test.nanodb.storage.btreefile.TestBTreeFile">
@@ -99,6 +98,5 @@
       </class>
     </classes>
   </test>
-  -->
 </suite>
 
