@@ -51,22 +51,23 @@ B1.  What is the total size of the index's search-key for the primary-key
      byte-level in your answer, but you should show what each byte is a
      part of.)
 
-     The search-key is simply the primary key ID, which is a 4 byte integer.
+     The search-key is five bytes. The first byte holds the null flags and
+     the next four bytes hold the primary key ID integer.
 
 B2.  What is the maximum number of search-keys that can be stored in leaf
      nodes of NanoDB's B+ tree implementation?  You should assume a page-
      size of 8192 bytes.
 
-     The tuples start on byte 5, and each takes up 4 bytes.
-     Thus each page can store 2046 tuples.
+     The tuples start on byte 5, and each takes up 5 bytes.
+     Thus each page can store 1637 tuples.
 
 B3.  What is the maximum number of keys that can be stored in inner nodes
      of this particular implementation?  (Recall that every key must have
      a page-pointer on either side of the key.)
 
      The pointers and keys start on byte 5. Pointers take 2 bytes and
-     search keys take 4 bytes. N search keys takes 6 * N + 2 bytes.
-     Thus each page can store 1364 keys.
+     search keys take 5 bytes. N search keys takes 7 * N + 2 bytes.
+     Thus each page can store 1169 keys.
 
 B4.  In this implementation, leaf nodes do not reference the previous
      leaf, only the next leaf.  When splitting a leaf into two leaves,
