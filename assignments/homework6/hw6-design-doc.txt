@@ -27,9 +27,9 @@ A3.  Specify any late tokens you are applying to this assignment, or
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith:
+    Advith: Indexes
     Joon: Complete Missing B+ Tree Operations
-    Charlie:
+    Charlie: Analysis and EC
 
 B:  Analysis of Implementation
 ------------------------------
