@@ -51,23 +51,32 @@ B1.  What is the total size of the index's search-key for the primary-key
      byte-level in your answer, but you should show what each byte is a
      part of.)
 
-     The search-key is five bytes. The first byte holds the null flags and
-     the next four bytes hold the primary key ID integer.
+     The search-key is nine bytes. One byte is dedicated to holding the null
+     flags. Four bytes are for holding the integer key id. Four bytes are for
+     holding the FilePointer to the DataPage where the tuple is stored.*
+
+     * In FilePointer.java, the class level comment says that the pageNo is
+       32 bits and the offset is 16 bits. However, the actual implementation
+       uses 16 bits for both, totalling to 4 bytes. This can be verified in
+       PageTuple.getStorageSize() which lists FILE_POINTER as 4 bytes, and in
+       PageFile.getColumnValue() which reads the two values as shorts (2 bytes
+       each). Thus, in this question we will use the actual size footprint on
+       disk, which is 4 bytes.
 
 B2.  What is the maximum number of search-keys that can be stored in leaf
      nodes of NanoDB's B+ tree implementation?  You should assume a page-
      size of 8192 bytes.
 
-     The tuples start on byte 5, and each takes up 5 bytes.
-     Thus each page can store 1637 tuples.
+     The tuples start on byte 5, and each takes up 9 bytes.
+     Thus each page can store 909 tuples.
 
 B3.  What is the maximum number of keys that can be stored in inner nodes
      of this particular implementation?  (Recall that every key must have
      a page-pointer on either side of the key.)
 
      The pointers and keys start on byte 5. Pointers take 2 bytes and
-     search keys take 5 bytes. N search keys takes 7 * N + 2 bytes.
-     Thus each page can store 1169 keys.
+     search keys take 9 bytes. N search keys takes 11 * N + 2 bytes.
+     Thus each page can store 744 keys.
 
 B4.  In this implementation, leaf nodes do not reference the previous
      leaf, only the next leaf.  When splitting a leaf into two leaves,
@@ -85,14 +94,14 @@ B4.  In this implementation, leaf nodes do not reference the previous
        B  : set next leaf to B'
 
      We can get the pointer to C from B, so we only need to read/write to
-     these two nodes total.
+     these two nodes total. A and C are unchanged.
 
      When leaves also contain a previous-leaf pointer, then we will modify:
        B' : set next leaf to C and previous to B
        B  : set next leaf to B'
        C  : set previous to B'
 
-     Thus we will need to modify three nodes total.
+     Thus we will need to modify three nodes total. A is unchanged.
 
 B5.  In this implementation, nodes do not store a page-pointer to their
      parent node.  This makes the update process somewhat complicated, as
