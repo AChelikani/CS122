@@ -16,9 +16,9 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
      of your repository tags with this command:  git show-ref --tags)
 
-     Repository URL:  <url>
-     Tag name:        <tag>
-     Commit hash:     <hash>
+     Repository URL:  https://github.com/AChelikani/CS122
+     Tag name:        hw6
+     Commit hash:     bef7bbaf20ba41d2630bcba74e59acb84d801b1b
 
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
@@ -27,9 +27,10 @@ A3.  Specify any late tokens you are applying to this assignment, or
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith: Indexes
+    Advith: Support for B+ Tree Indexes
     Joon: Complete Missing B+ Tree Operations
-    Charlie: Analysis and EC
+    Charlie: Analysis of Implementation and EC
+
 
 B:  Analysis of Implementation
 ------------------------------
