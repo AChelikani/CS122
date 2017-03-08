@@ -578,7 +578,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             // Find difference between start and end of tuple positions on page
             tuplesSize += DataPage.getTupleDataEnd(page) - DataPage.getTupleDataStart(page);
             page.unpin();
-            storageManager.logDBPageWrite(page);s
+            storageManager.logDBPageWrite(page);
         }
 
         float avgSize = (float) tuplesSize / tuplesCount;

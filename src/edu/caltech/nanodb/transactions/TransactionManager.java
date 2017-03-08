@@ -29,6 +29,8 @@ import edu.caltech.nanodb.storage.writeahead.RecoveryInfo;
 import edu.caltech.nanodb.storage.writeahead.WALManager;
 import edu.caltech.nanodb.storage.writeahead.WALRecordType;
 
+import edu.caltech.nanodb.transactions.TransactionException;
+
 
 /**
  */
@@ -409,8 +411,6 @@ public class TransactionManager implements BufferManagerObserver {
      */
     @Override
     public void beforeWriteDirtyPages(List<DBPage> pages) throws IOException {
-        // TODO:  IMPLEMENT
-        //
         // This implementation must enforce the write-ahead logging rule (aka
         // the WAL rule) by ensuring that the write-ahead log reflects all
         // changes to all of the specified pages, on disk, before any of these
@@ -432,6 +432,26 @@ public class TransactionManager implements BufferManagerObserver {
         //
         // Finally, you can use the forceWAL(LogSequenceNumber) function to
         // force the WAL to be written out to the specified LSN.
+
+        // Find largest LSN of all the pages and pass that to forceWAL
+        LogSequenceNumber maxLSN = null;
+
+        for (DBPage pg : pages) {
+            DBFileType dbType = pg.getDBFile().getType();
+            if (dbType != DBFileType.WRITE_AHEAD_LOG_FILE && dbType != DBFileType.TXNSTATE_FILE) {
+                // Get page's LSN
+                LogSequenceNumber lsn = pg.getPageLSN();
+                if (lsn == null) {
+                    logger.debug("This page does not have an LSN");
+                }
+                if (maxLSN == null) {
+                    maxLSN = lsn;
+                } else if (maxLSN.compareTo(lsn) < 0) {
+                    maxLSN = lsn;
+                }
+            }
+        }
+        forceWAL(maxLSN);
     }
 
 
