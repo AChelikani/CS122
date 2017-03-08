@@ -442,7 +442,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         // unpin the newly added tuple.
         headerPage.unpin();
         nextPage.unpin();
-
+        storageManager.logDBPageWrite(nextPage);
         return pageTup;
     }
 
@@ -475,6 +475,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
         DBPage dbPage = ptup.getDBPage();
         DataPage.sanityCheck(dbPage);
+        storageManager.logDBPageWrite(dbPage);
     }
 
 
@@ -536,6 +537,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         }
 
         currPage.unpin();   // Unpin pages.
+        storageManager.logDBPageWrite(currPage);
     }
 
 
@@ -576,6 +578,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             // Find difference between start and end of tuple positions on page
             tuplesSize += DataPage.getTupleDataEnd(page) - DataPage.getTupleDataStart(page);
             page.unpin();
+            storageManager.logDBPageWrite(page);s
         }
 
         float avgSize = (float) tuplesSize / tuplesCount;
