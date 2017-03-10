@@ -1081,6 +1081,43 @@ public class WALManager {
                 "Undoing WAL record at %s.  Type = %s, TxnID = %d",
                 lsn, type, transactionID));
 
+            // Expect only UPDATE_PAGE and START_TXN, otherwise throw an error.
+            if (type == null || (type != WALRecordType.UPDATE_PAGE && type != WALRecordType.START_TXN)) {
+                throw new WALFileException(String.format("Sent to WAL record " +
+                        "of type %s at LSN %s, during rollback of " +
+                        "transaction %d.", type, lsn, transactionID));
+            }
+
+            // Handle UPDATE_PAGE case.
+            if (type == WALRecordType.UPDATE_PAGE) {
+                int prevLSNfileNo = walReader.readUnsignedShort();
+                int prevLSNoffset = walReader.readInt();
+                String prevFilename = walReader.readVarString255();
+                int modifiedPageNo = walReader.readUnsignedShort();
+                int numSegments = walReader.readUnsignedShort();
+
+                logger.debug(String.format(
+                        "UPDATE_PAGE record with {prevLSNfileNo=%d,  prevLSNoffset=%d,  " +
+                                "prevFilename=%s,  modifiedPageNo=%d,  numSegments=%d}",
+                        prevLSNfileNo, prevLSNoffset, prevFilename, modifiedPageNo, numSegments));
+
+                DBFile modifiedFile = storageManager.openDBFile(prevFilename);
+                DBPage modifiedPage = storageManager.loadDBPage(modifiedFile, modifiedPageNo);
+
+                byte[] changes = applyUndoAndGenRedoOnlyData(walReader, modifiedPage, numSegments);
+
+                writeTxnRecord(WALRecordType.ABORT_TXN); // TODO this is probably wrong
+                writeRedoOnlyUpdatePageRecord(modifiedPage, numSegments, changes);
+
+                lsn = new LogSequenceNumber(prevLSNfileNo, prevLSNoffset);
+            }
+
+            // Handle START_TXN case.
+            else { // type == WALRecordType.START_TXN
+                break;
+            }
+
+
             // TODO:  IMPLEMENT THE REST
             //
             //        Use logging statements liberally to help verify and
@@ -1093,7 +1130,6 @@ public class WALManager {
 
             // TODO:  This break is just here so the code will compile; when
             //        you provide your own implementation, get rid of it!
-            break;
         }
 
         // All done rolling back the transaction!  Record that it was aborted
