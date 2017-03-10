@@ -3,6 +3,7 @@ package edu.caltech.nanodb.transactions;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.Buffer;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -477,6 +478,76 @@ public class TransactionManager implements BufferManagerObserver {
         //
         // int lastPosition = lsn.getFileOffset() + lsn.getRecordSize();
         // WALManager.computeNextLSN(lsn.getLogFileNo(), lastPosition);
+
+        logger.debug("Currently LSN " + txnStateNextLSN + ", syncing to LSN " + lsn);
+
+        // If syncing to null, or current LSN is >= sync LSN, then return (no-op).
+        if (lsn == null || txnStateNextLSN.compareTo(lsn) >= 0) {
+            return;
+        }
+
+        BufferManager bm = storageManager.getBufferManager();
+
+        // Start and end are in the same log file.
+        // Just figure out which pages are dirty and sync those pages.
+        if (txnStateNextLSN.getLogFileNo() == lsn.getLogFileNo()) {
+            int fileNo = txnStateNextLSN.getLogFileNo();
+            DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
+            if (file != null) {
+                int startPage = (txnStateNextLSN.getFileOffset() - 1) / file.getPageSize() + 1;
+                int endPage = (lsn.getFileOffset() - 1) / file.getPageSize() + 1;
+                logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
+                        fileNo, startPage, endPage));
+                bm.writeDBFile(file, startPage, endPage, true);
+            }
+        }
+
+        // Start and end are different files.
+        // Handle the start and end specially, and sync everything in between.
+        else {
+            // Handle start file.
+            {
+                int fileNo = txnStateNextLSN.getLogFileNo();
+                DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
+                if (file != null) {
+                    int startPage = (txnStateNextLSN.getFileOffset() - 1) / file.getPageSize() + 1;
+                    int endPage = file.getNumPages();
+                    logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
+                            fileNo, startPage, endPage));
+                    bm.writeDBFile(file, startPage, endPage, true);
+                }
+            }
+
+            // Handle everything in between.
+            {
+                int startFileNo = txnStateNextLSN.getLogFileNo();
+                int endFileNo = lsn.getLogFileNo();
+                for (int fileNo = startFileNo + 1; fileNo < endFileNo; fileNo++) {
+                    DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
+                    if (file != null) {
+                        logger.debug(String.format("Syncing all of fileNo %d.", fileNo));
+                        bm.writeDBFile(file, true);
+                    }
+                }
+            }
+
+            // Handle end file.
+            {
+                int fileNo = lsn.getLogFileNo();
+                DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
+                if (file != null) {
+                    int startPage = 0;
+                    int endPage = (lsn.getFileOffset() - 1) / file.getPageSize() + 1;
+                    logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
+                            fileNo, startPage, endPage));
+                    bm.writeDBFile(file, startPage, endPage, true);
+                }
+            }
+        }
+
+        // Store transaction state to file atomically.
+        txnStateNextLSN = lsn;
+        storeTxnStateToFile();
     }
 
 
