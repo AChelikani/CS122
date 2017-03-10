@@ -124,6 +124,8 @@ public class HeapTupleFileManager implements TupleFileManager {
 
         // Unpin the header page.
         headerPage.unpin();
+
+        storageManager.logDBPageWrite(headerPage);
     }
 
 

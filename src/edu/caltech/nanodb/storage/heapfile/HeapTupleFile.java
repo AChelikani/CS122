@@ -368,6 +368,7 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
 
         // Get the header page.
         DBPage headerPage = storageManager.loadDBPage(dbFile, 0);
+        boolean headerPageWritten = false;
 
         // Get the next page with free space.
         int nextPageIndex = HeaderPage.getNextFreeBlock(headerPage);
@@ -400,6 +401,10 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             HeaderPage.setNextFreeBlock(headerPage, nextPageIndex);
 
             nextPage.unpin(); // unpin the evicted page (no longer needed).
+
+            // Log changes in linked-list
+            storageManager.logDBPageWrite(nextPage);
+            headerPageWritten = true;
         }
 
         // No more free pages, create new page.
@@ -417,6 +422,8 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
             // Mark as active page in linked-list.
             DataPage.MetaData.setNextFreeBlock(nextPage, 0);
             DataPage.MetaData.setIsInLinkedList(nextPage, true);
+
+            headerPageWritten = true;
         }
 
         // Insert the tuple into the page.
@@ -443,6 +450,9 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         headerPage.unpin();
         nextPage.unpin();
         storageManager.logDBPageWrite(nextPage);
+        if (headerPageWritten) {
+            storageManager.logDBPageWrite(headerPage);
+        }
         return pageTup;
     }
 
@@ -492,6 +502,8 @@ page_scan:  // So we can break out of the outer loop from inside the inner loop.
         DBPage dbPage = ptup.getDBPage();
         DataPage.deleteTuple(dbPage, ptup.getSlot());
         DataPage.sanityCheck(dbPage);
+
+        storageManager.logDBPageWrite(dbPage);
 
         // Note that we don't invalidate the page-tuple when it is deleted,
         // so that the tuple can still be unpinned, etc.
