@@ -1106,7 +1106,7 @@ public class WALManager {
 
                 byte[] changes = applyUndoAndGenRedoOnlyData(walReader, modifiedPage, numSegments);
 
-                writeTxnRecord(WALRecordType.ABORT_TXN); // TODO this is probably wrong
+                // Record compensation
                 writeRedoOnlyUpdatePageRecord(modifiedPage, numSegments, changes);
 
                 lsn = new LogSequenceNumber(prevLSNfileNo, prevLSNoffset);
@@ -1114,6 +1114,8 @@ public class WALManager {
 
             // Handle START_TXN case.
             else { // type == WALRecordType.START_TXN
+                // Since rollback is complete, record ABORT
+                writeTxnRecord(WALRecordType.ABORT_TXN);
                 break;
             }
 
