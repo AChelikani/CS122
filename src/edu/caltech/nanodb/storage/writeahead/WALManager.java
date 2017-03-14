@@ -19,6 +19,7 @@ import edu.caltech.nanodb.storage.StorageManager;
 import edu.caltech.nanodb.transactions.TransactionManager;
 import edu.caltech.nanodb.transactions.TransactionState;
 import edu.caltech.nanodb.util.ArrayUtil;
+import sun.rmi.runtime.Log;
 
 
 /**
@@ -282,6 +283,49 @@ public class WALManager {
             //                    " during redo processing!");
             //            }
 
+            switch(type) {
+                case START_TXN:
+                    walReader.readByte(); // WALRecordType.START_TXN
+                    recoveryInfo.updateInfo(transactionID, currLSN);
+                    logger.debug(String.format(
+                            "recoveryInfo for transactionID %d set to LSN = %s",
+                            transactionID, currLSN));
+                    break;
+                case UPDATE_PAGE:
+                case UPDATE_PAGE_REDO_ONLY:
+                    walReader.readUnsignedShort(); // prevLSNfileNo
+                    walReader.readInt(); // prevLSNoffset
+                    String prevFilename = walReader.readVarString255();
+                    int modifiedPageNo = walReader.readUnsignedShort();
+                    int numSegments = walReader.readUnsignedShort();
+                    DBFile modifiedFile = storageManager.openDBFile(prevFilename);
+                    DBPage modifiedPage = storageManager.loadDBPage(modifiedFile, modifiedPageNo);
+                    applyRedo(type, walReader, modifiedPage, numSegments);
+                    walReader.readInt(); // file offset
+                    walReader.readByte(); // WALRecordType.UPDATE_PAGE(_REDO_ONLY)
+                    recoveryInfo.updateInfo(transactionID, currLSN);
+                    logger.debug(String.format(
+                            "recoveryInfo for transactionID %d updated to LSN = %s",
+                            transactionID, currLSN));
+                    break;
+                case COMMIT_TXN:
+                case ABORT_TXN:
+                    walReader.readUnsignedShort(); // prevLSNfileNo
+                    walReader.readInt(); // prevLSNoffset
+                    walReader.readByte(); // WALRecordType.COMMIT_TXN or WALRecordType.ABORT_TXN
+                    recoveryInfo.recordTxnCompleted(transactionID);
+                    logger.debug(String.format(
+                            "recoveryInfo for transactionID %d set to COMPLETED",
+                            transactionID));
+                    break;
+                default:
+                    throw new WALFileException(
+                            "Encountered unrecognized WAL record type " + type + " at LSN " +
+                                    currLSN + " during redo processing!");
+            }
+
+            // END TODO
+
             oldLSN = currLSN;
             currLSN = computeNextLSN(currLSN.getLogFileNo(), walReader.getPosition());
         }
@@ -447,6 +491,56 @@ public class WALManager {
             //                    type + " at LSN " + currLSN +
             //                    " during undo processing!");
             //            }
+            LogSequenceNumber lastLSN = recoveryInfo.getLastLSN(transactionID);
+
+            switch(type) {
+                case START_TXN:
+                    writeTxnRecord(WALRecordType.ABORT_TXN, transactionID, lastLSN);
+                    logger.debug(String.format(
+                            "Record ABORT for transactionID %d with prevLSN %s",
+                            transactionID, lastLSN));
+                    recoveryInfo.recordTxnCompleted(transactionID);
+                    logger.debug(String.format(
+                            "recoveryInfo for transactionID %d set to COMPLETED",
+                            transactionID));
+                    break;
+                case UPDATE_PAGE:
+                    int prevLSNfileNo = walReader.readUnsignedShort();
+                    int prevLSNoffset = walReader.readInt();
+                    String prevFilename = walReader.readVarString255();
+                    int modifiedPageNo = walReader.readUnsignedShort();
+                    int numSegments = walReader.readUnsignedShort();
+                    logger.debug(String.format(
+                            "UPDATE_PAGE record with {prevLSNfileNo=%d,  prevLSNoffset=%d,  " +
+                                    "prevFilename=%s,  modifiedPageNo=%d,  numSegments=%d}",
+                            prevLSNfileNo, prevLSNoffset, prevFilename, modifiedPageNo, numSegments));
+
+                    DBFile modifiedFile = storageManager.openDBFile(prevFilename);
+                    DBPage modifiedPage = storageManager.loadDBPage(modifiedFile, modifiedPageNo);
+
+                    byte[] changes = applyUndoAndGenRedoOnlyData(walReader, modifiedPage, numSegments);
+
+                    LogSequenceNumber redoOnlyLSN = writeRedoOnlyUpdatePageRecord(transactionID,
+                            lastLSN, modifiedPage, numSegments, changes);
+                    logger.debug(String.format(
+                            "Record UPDATE_PAGE_REDO_ONLY for transactionID %d with prevLSN %s",
+                            transactionID, lastLSN));
+
+                    recoveryInfo.updateInfo(transactionID, redoOnlyLSN);
+                    logger.debug(String.format(
+                            "recoveryInfo for transactionID %d updated to %s",
+                            transactionID, redoOnlyLSN));
+                    break;
+                case UPDATE_PAGE_REDO_ONLY:
+                    break;
+                default:
+                    throw new WALFileException(
+                            "Encountered unrecognized WAL record type " +
+                                    type + " at LSN " + currLSN +
+                                    " during undo processing!");
+            }
+
+            // End TODO
 
             oldLSN = currLSN;
         }
