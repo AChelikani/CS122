@@ -1208,8 +1208,7 @@ public class WALManager {
 
             // Handle START_TXN case.
             else { // type == WALRecordType.START_TXN
-                // Since rollback is complete, record ABORT
-                writeTxnRecord(WALRecordType.ABORT_TXN);
+                // Rollback is complete
                 break;
             }
 
