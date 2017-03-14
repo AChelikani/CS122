@@ -469,6 +469,21 @@ public class TransactionManager implements BufferManagerObserver {
      *         going to be broken.
      */
     public void forceWAL(LogSequenceNumber lsn) throws IOException {
+        // This method (forceWAL) is atomic in the sense that there are no
+        // failure points where the data can be corrupted. First, we update the
+        // WAL on disk, writing out the contents of the log up to where we are
+        // syncing to. If the method fails at any point during this, then the
+        // log will contain additional entries on disk. However, this is fine,
+        // since the log will not acknowledge these extra entries (they may
+        // as well be garbage). Only once the transaction state is updated with
+        // the new NextLSN will these log records be "active."
+        //
+        // The transaction state is updated at the very end, once the WAL has
+        // been written to completely. This guarantees that the updated state
+        // is valid and completely on disk already. This operation is atomic
+        // since the transaction state is only one block on disk, and can be
+        // written in one write by the OS (preventing write-tearing).
+
         // TODO:  IMPLEMENT
         //
         // Note that the "next LSN" value must be determined from both the
@@ -544,7 +559,8 @@ public class TransactionManager implements BufferManagerObserver {
             }
         }
 
-        // Store transaction state to file atomically.
+        // Store transaction state to file atomically. This finalizes the
+        // update on disk (everything up to this point has been non-permanent).
         txnStateNextLSN = lsn;
         storeTxnStateToFile();
     }

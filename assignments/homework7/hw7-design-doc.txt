@@ -6,11 +6,11 @@ A:  Logistics
 
 A1.  List your team name and the people who worked on this assignment.
 
-     <team name>
+     sqLIT
 
-     <name>
-     <name>
-     ...
+     Advith Chelikani
+     Joon Lee
+     Charlie Tong
 
 A2.  Specify the repository URL, tag name and commit-hash of the Git version
      you are submitting for your assignment.  (You can list the commit hashes
@@ -23,7 +23,13 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
+     None
+
 A4.  Briefly describe what parts of the assignment each teammate focused on.
+
+    Advith: <>
+    Joon: <>
+    Charlie: Implement forceWAL and transaction rollback
 
 B:  Write-Ahead Logging
 -----------------------
@@ -37,6 +43,21 @@ B1.  One of your tasks this week was to implement the TransactionManager's
      an atomic file-sync operation, and that writing a single sector will
      also be atomic with the obvious caveat that the written sector may still
      be buffered until a sync occurs.)
+
+     We wrote our method forceWAL to be atomic in the sense that there are no
+     failure points where the data can be corrupted. First, we update the
+     WAL on disk, writing out the contents of the log up to where we are
+     syncing to. If the method fails at any point during this, then the
+     log will contain additional entries on disk. However, this is fine,
+     since the log will not acknowledge these extra entries (they may
+     as well be garbage). Only once the transaction state is updated with
+     the new NextLSN will these log records be "active."
+
+     The transaction state is updated at the very end, once the WAL has
+     been written to completely. This guarantees that the updated state
+     is valid and completely on disk already. This operation is atomic
+     since the transaction state is only one block on disk, and can be
+     written in one write by the OS (preventing write-tearing).
 
 B2:  Another task was to implement the beforeWriteDirtyPages() method on the
      TransactionManager.  Your implementation must ensure that the write-ahead
@@ -79,6 +100,9 @@ D:  Testing
 D1:  Did you run into any fun, surprising or crazy bugs while you were
      debugging your transaction-processing code?  (It's OK if your answer
      is "no," although Donnie will be dubious...)
+
+     We had an off-by-one error when forcing the WAL to disk, because for some
+     reason Charlie thought log pages started on 1 and not 0.
 
 E:  Extra Credit [OPTIONAL]
 ---------------------------
