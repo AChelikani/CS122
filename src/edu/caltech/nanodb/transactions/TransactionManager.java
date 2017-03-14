@@ -3,7 +3,6 @@ package edu.caltech.nanodb.transactions;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.Buffer;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -494,8 +493,8 @@ public class TransactionManager implements BufferManagerObserver {
             int fileNo = txnStateNextLSN.getLogFileNo();
             DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
             if (file != null) {
-                int startPage = (txnStateNextLSN.getFileOffset() - 1) / file.getPageSize() + 1;
-                int endPage = (lsn.getFileOffset() - 1) / file.getPageSize() + 1;
+                int startPage = txnStateNextLSN.getFileOffset() / file.getPageSize();
+                int endPage = (lsn.getFileOffset() - 1) / file.getPageSize();
                 logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
                         fileNo, startPage, endPage));
                 bm.writeDBFile(file, startPage, endPage, true);
@@ -510,7 +509,7 @@ public class TransactionManager implements BufferManagerObserver {
                 int fileNo = txnStateNextLSN.getLogFileNo();
                 DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
                 if (file != null) {
-                    int startPage = (txnStateNextLSN.getFileOffset() - 1) / file.getPageSize() + 1;
+                    int startPage = txnStateNextLSN.getFileOffset() / file.getPageSize();
                     int endPage = file.getNumPages();
                     logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
                             fileNo, startPage, endPage));
@@ -537,7 +536,7 @@ public class TransactionManager implements BufferManagerObserver {
                 DBFile file = bm.getFile(WALManager.getWALFileName(fileNo));
                 if (file != null) {
                     int startPage = 0;
-                    int endPage = (lsn.getFileOffset() - 1) / file.getPageSize() + 1;
+                    int endPage = (lsn.getFileOffset() - 1) / file.getPageSize();
                     logger.debug(String.format("Syncing fileNo %d, pages %d-%d.",
                             fileNo, startPage, endPage));
                     bm.writeDBFile(file, startPage, endPage, true);
