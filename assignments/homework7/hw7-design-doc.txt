@@ -29,7 +29,7 @@ A4.  Briefly describe what parts of the assignment each teammate focused on.
 
     Advith: Enable transaction processing, Add Logging to Heap Tuple Files,
     Enforce the Write-ahead logging rule
-    Joon: <>
+    Joon: Implement database recovery and test write-ahead logging
     Charlie: Implement forceWAL and transaction rollback
 
 B:  Write-Ahead Logging
