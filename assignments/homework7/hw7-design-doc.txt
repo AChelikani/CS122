@@ -69,6 +69,11 @@ B3:  In your current implementation, some pages may not have corresponding
      log.  Enumerate all file types that will have pages not logged in the
      WAL.
 
+     Out of DBFileType, the following do not have pages logged in the WAL:
+      - BTREE_TUPLE_FILE       (logging not implemented for btree files)
+      - TXNSTATE_FILE          (one page only, actions are atomic)
+      - WRITE_AHEAD_LOG_FILE   (this is the log itself...)
+
 C:  The txnstate.dat File
 -------------------------
 
