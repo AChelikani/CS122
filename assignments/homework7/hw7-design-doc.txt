@@ -23,11 +23,12 @@ A2.  Specify the repository URL, tag name and commit-hash of the Git version
 A3.  Specify any late tokens you are applying to this assignment, or
      "none" if no late tokens.
 
-     None
+     Two
 
 A4.  Briefly describe what parts of the assignment each teammate focused on.
 
-    Advith: <>
+    Advith: Enable transaction processing, Add Logging to Heap Tuple Files,
+    Enforce the Write-ahead logging rule
     Joon: <>
     Charlie: Implement forceWAL and transaction rollback
 
@@ -63,6 +64,12 @@ B2:  Another task was to implement the beforeWriteDirtyPages() method on the
      TransactionManager.  Your implementation must ensure that the write-ahead
      logging rule is always followed.  What steps do you take to ensure this
      will always happen?  Describe your method's approach.
+
+     We keep track of the maximum LSN of the pages we encounter that are not
+     write ahead log files or transaction state files. Once we have found the
+     maximum of pages with the above constraints, we force the WAL to be written
+     that LSN.Finding the maximum LSN of all the pages ensures that the
+     write-ahead logging rule is always followed.
 
 B3:  In your current implementation, some pages may not have corresponding
      LSNs associated with them, because they are not logged in the write-ahead
@@ -149,6 +156,3 @@ F4.  Did you particularly enjoy any parts of the assignment?  Were there
 
 F5.  Do you have any suggestions for how future versions of the
      assignment can be improved?
-
-
-
