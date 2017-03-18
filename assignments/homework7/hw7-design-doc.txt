@@ -88,16 +88,47 @@ C1.  The txnstate.dat file records the next transaction ID that the database
      should use when it is restarted.  Why is it important for this to be
      stored and used by the database when it is restarted?
 
+     The next transaction ID is important as it ensures that each transaction
+     has a unique ID. If multiple transactions were to share the same transaction
+     ID, processes such as rollbacks or redos/undos would not function correctly.
+
 C2:  The txnstate.dat file records a "firstLSN" value, which is where recovery
      processing starts from.  What guarantees are made about this firstLSN
      value?  Given these guarantees, will redo processing need any records
      before the firstLSN value?  Will undo processing need any records before
      the firstLSN value?  Justify your answers.
 
+     The firstLSN value guarantees that all data files reflect all changes that
+     are recorded in the write-ahead log before that LSN. Also, it guarantees
+     that there are no incomplete transactions at the firstLSN point in the log.
+
+     This means that redo processing can ignore all LSN's before this point, as
+     these LSN's are already reflected in all files. Also, undo processing does
+     not need any records before the firstLSN values since no transactions
+     at the firstLSN point in the log are incomplete.
+
 C3:  Currently, the "firstLSN" value is only moved forward when recovery
      processing is completed.  Can you describe a strategy for moving forward
      firstLSN during normal operation?  What constraints must be enforced to
      ensure the database continues working properly?  Explain your answers.
+
+     A strategy for moving forward firstLSN is to
+
+     1) Compute where the firstLSN should be according to the
+     WAL's and the dirty pages currently in the buffer.
+     2) Record WAL's to disk and sync
+     3) Record dirty pages to disk and sync
+     4) Update firstLSN
+
+     The constraint that must be enforced is that there are no update
+     operations during step (1). If there are update operations afterwards,
+     this may possibly allow firstLSN to move up even more, but the
+     firstLSN computed at step (1) is a safe, correct choice. If we did not
+     precompute firstLSN at step (1), then an update operation during step (3)
+     or step (4) might cause inconsistencies in the disk, as the dirty pages
+     recorded on to disk may be more updated than the WAL's that were already
+     updated, or transactions might complete in between (3) and (4), changing
+     the value of firstLSN.
 
 C4:  The txnstate.dat file's "firstLSN" value is somewhat similar to a
      checkpoint / fuzzy-checkpoint, but it is not quite the same.  Describe
@@ -105,6 +136,23 @@ C4:  The txnstate.dat file's "firstLSN" value is somewhat similar to a
      generally work, focusing on what constraints must be enforced during the
      checkpointing operation, vs. the constraints that NanoDB must enforce
      with firstLSN.
+
+     As described above, NanoDB's "firstLSN" guarantees that all data files
+     reflect all changes that are recorded in the write-ahead log before that
+     LSN, and that there are no incomplete transactions at that point in the log.
+     A "checkpoint" also guarantees that the disk reflects all changes recorded up
+     to that checkpoint record, but it does not guarantee that all transactions
+     at the checkpoint is completed. Hence, undo processing must check earlier
+     than the checkpoint record, unlike with "firstLSN".
+
+     In terms of constraints, the checkpoint procedure requires that no update
+     operations are allowed during the procedure, while the fuzzy checkpoint procedure
+     requires that no update operations are allowed while WAL's are being recorded
+     onto the disk, and no update operations on already dirty pages are allowed
+     afterwards. On the other hand, my strategy in C3 has the least constraints,
+     since updates are allowed after step (1), which would not take as long as
+     the disk IO operations in steps (2) and (3).
+
 
 D:  Testing
 -----------
